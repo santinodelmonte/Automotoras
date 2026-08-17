@@ -1,0 +1,32 @@
+# Normalizar finales de línea: LF en el repositorio, nativo en el working copy.
+* text=auto
+
+*.cs        text diff=csharp
+*.csproj    text
+*.sln       text eol=crlf
+*.props     text
+*.targets   text
+*.json      text
+*.md        text
+*.ts        text
+*.tsx       text
+*.js        text
+*.css       text
+*.html      text
+*.yml       text
+*.yaml      text
+
+*.sh        text eol=lf
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+
+# Binarios
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.webp      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.woff      binary
+*.woff2     binary
