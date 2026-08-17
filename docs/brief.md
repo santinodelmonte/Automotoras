@@ -54,6 +54,17 @@ Monorepo:
 /docs
 ```
 
+> **Avance:** paso 0 (esqueleto) y paso 2 (modelo de datos, entidades y migración inicial)
+> están hechos. Sigue el paso 3: autenticación, roles y resolución de tenant.
+>
+> Desvíos respecto de este documento, decididos durante la implementación:
+> - Se agregó la tabla `solicitudes_modelo`, que no está en la lista de tablas pero es
+>   necesaria para la aprobación de altas de modelos que sí es feature de fase 1.
+> - La entidad de `versiones` se llama `VersionVehiculo` en C# para no chocar con
+>   `System.Version`.
+> - `vehiculo_fotos` no lleva `tenant_id` propio, como dice el brief; su filtro global
+>   navega hasta el tenant del vehículo.
+
 ## Paso 0 — Esqueleto ejecutable ✅ hecho
 
 **Regla:** la primera entrega es únicamente el andamiaje del proyecto. Nada de lógica de

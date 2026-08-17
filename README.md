@@ -15,9 +15,11 @@ juntos y por eso el tracking de eventos se instrumenta desde el primer día.
 El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está en
 [docs/brief.md](docs/brief.md).
 
-> **Estado actual: Paso 0 — esqueleto ejecutable.** El repositorio compila, corre, tiene
-> tests pasando y el frontend consume la API. Todavía no hay entidades, base de datos,
-> autenticación ni features.
+> **Estado actual: paso 2 — modelo de datos.** El esqueleto corre, el frontend consume la
+> API, y están las entidades, el `DbContext` con los filtros globales por tenant y la
+> migración inicial. Todavía no hay autenticación, resolución de tenant ni features:
+> el `ITenantContext` existe pero nadie lo resuelve aún, así que por diseño no se lee ni
+> se escribe nada.
 
 ## Requisitos previos
 
@@ -26,7 +28,14 @@ El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está 
 | .NET SDK | 8.0.x | La versión está fijada en [`global.json`](global.json). Si tenés instalado el SDK 10, igual se usa el 8. |
 | Node.js | 20.19+ / 22.12+ | Probado con Node 24. |
 | npm | 10+ | |
-| MySQL | 8.0 | Todavía no hace falta: no hay base de datos en el Paso 0. |
+| MySQL | 8.0 | Necesario para aplicar migraciones y correr contra una base real. La API levanta y `/api/health` responde sin él. |
+
+Las herramientas de EF Core están fijadas en el repo ([`.config/dotnet-tools.json`](.config/dotnet-tools.json)).
+Después de clonar:
+
+```bash
+dotnet tool restore
+```
 
 ## Cómo levantarlo
 
@@ -56,6 +65,67 @@ conexión.
 ```bash
 dotnet test
 ```
+
+Los tests de persistencia corren sobre SQLite en memoria, así que no hace falta MySQL para
+ejecutarlos. Se eligió SQLite y no el proveedor `InMemory` a propósito: el `InMemory` no
+traduce a SQL y evalúa los filtros con semántica de C#, con lo cual un filtro de tenant
+roto podría pasar el test igual.
+
+### Migraciones
+
+```bash
+dotnet dotnet-ef migrations add NombreDeLaMigracion --project backend/Infrastructure --startup-project backend/Infrastructure --output-dir Persistence/Migrations
+```
+
+Generar una migración no necesita una base viva: se resuelve con la factory de diseño y la
+versión de MySQL declarada. Para aplicarla sí hace falta MySQL:
+
+```bash
+ConnectionStrings__Default="Server=localhost;Port=3306;Database=automotora_saas;User Id=root;Password=...;" dotnet dotnet-ef database update --project backend/Infrastructure --startup-project backend/Infrastructure
+```
+
+En SmarterASP.NET, donde no hay CLI, conviene generar el SQL y aplicarlo desde el panel:
+
+```bash
+dotnet dotnet-ef migrations script --idempotent --project backend/Infrastructure --startup-project backend/Infrastructure --output schema.sql
+```
+
+## Modelo de datos
+
+El detalle de cada tabla está en [docs/brief.md](docs/brief.md). Lo que conviene saber
+para tocar el código:
+
+**La normalización no es opcional.** Marca, modelo y versión son tablas con foreign keys y
+con índices únicos, nunca texto libre. Si un vendedor pudiera escribir "VW", "Volkswagen" y
+"volkswagen ", cualquier agregación posterior sería basura irrecuperable — y la analítica de
+demanda es el producto, no el catálogo.
+
+**Los tipos tampoco.** El año y el kilometraje son `int`, el precio es `decimal(12,2)` con la
+moneda en columna aparte. En Uruguay se publica en dólares y en pesos: sin moneda explícita y
+sin cotizaciones históricas no se puede comparar nada a lo largo del tiempo.
+
+### Aislamiento entre tenants
+
+Se sostiene sobre dos mecanismos, porque uno solo no alcanza:
+
+1. **Lectura.** Toda entidad que implementa `ITenantEntity` tiene un filtro global en
+   [`AppDbContext`](backend/Infrastructure/Persistence/AppDbContext.cs). Olvidarse un
+   `WHERE tenant_id = ...` no alcanza para ver datos ajenos.
+2. **Escritura.** Los filtros globales no tocan los `INSERT` ni los `UPDATE`. Por eso
+   `SaveChanges` sella el tenant en las altas y rechaza cualquier escritura sobre datos de
+   otro tenant, lanzando `TenantIsolationException`.
+
+Sin tenant resuelto, las lecturas devuelven cero filas y las escrituras lanzan. Falla
+cerrado a propósito: es la diferencia entre un bug de resolución que rompe una pantalla y
+uno que filtra la base entera.
+
+Los filtros están escritos uno por uno en `OnModelCreating` en vez de aplicarse por
+reflexión, para que la frontera de seguridad pueda auditarse leyendo. La red contra olvidos
+es un test que recorre todas las entidades `ITenantEntity` y falla si alguna quedó sin filtro.
+
+El acceso cross-tenant del SuperAdmin existe, pero siempre explícito: `IgnoreQueryFilters()`
+para leer y `PermitirEscrituraCrossTenant()` para escribir, únicamente desde los endpoints
+bajo `/api/admin/*`. Nunca por un flag opcional en un endpoint normal.
 
 ## Variables de entorno
 
