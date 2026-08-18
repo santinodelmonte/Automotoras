@@ -58,6 +58,7 @@ public class AppDbContext : DbContext
     public DbSet<Modelo> Modelos => Set<Modelo>();
     public DbSet<VersionVehiculo> Versiones => Set<VersionVehiculo>();
     public DbSet<Cotizacion> Cotizaciones => Set<Cotizacion>();
+    public DbSet<PrecioReferencia> PreciosReferencia => Set<PrecioReferencia>();
 
     // Identidad. Los usuarios llevan tenant anulable: el SuperAdmin es cross-tenant.
     public DbSet<User> Users => Set<User>();

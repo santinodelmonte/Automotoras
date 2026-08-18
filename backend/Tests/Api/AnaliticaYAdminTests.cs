@@ -217,6 +217,89 @@ public sealed class AnaliticaYAdminTests : IClassFixture<FabricaDeApi>
     }
 
     [Fact]
+    public async Task El_job_de_precios_de_referencia_guarda_y_es_idempotente()
+    {
+        using var cliente = _api.CreateClient();
+        cliente.DefaultRequestHeaders.Add("X-Job-Secret", FabricaDeApi.SecretoDeJobs);
+
+        var fecha = new DateOnly(2026, 8, 3);
+
+        PrecioRelevadoDto Relevado(decimal promedio) => new(
+            _api.ModeloId, 2019, fecha, "Usd", promedio, promedio - 1_000m, promedio + 1_000m, 42, "MercadoLibre");
+
+        var primera = await cliente.PostAsJsonAsync(
+            "/api/jobs/precios-referencia",
+            new RegistrarPreciosReferenciaRequest([Relevado(14_000m)]));
+        primera.EnsureSuccessStatusCode();
+
+        var segunda = await cliente.PostAsJsonAsync(
+            "/api/jobs/precios-referencia",
+            new RegistrarPreciosReferenciaRequest([Relevado(14_500m)]));
+        segunda.EnsureSuccessStatusCode();
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var precios = await db.PreciosReferencia
+            .Where(p => p.Fecha == fecha && p.ModeloId == _api.ModeloId)
+            .ToListAsync();
+
+        // Una sola fila por modelo, año, moneda, fecha y fuente: el cron puede reintentar
+        // sin arruinar la serie histórica.
+        Assert.Single(precios);
+        Assert.Equal(14_500m, precios[0].Promedio);
+        Assert.Equal(42, precios[0].Muestras);
+    }
+
+    [Fact]
+    public async Task Un_precio_de_referencia_de_un_modelo_inexistente_se_rechaza()
+    {
+        using var cliente = _api.CreateClient();
+        cliente.DefaultRequestHeaders.Add("X-Job-Secret", FabricaDeApi.SecretoDeJobs);
+
+        var respuesta = await cliente.PostAsJsonAsync(
+            "/api/jobs/precios-referencia",
+            new RegistrarPreciosReferenciaRequest([
+                new PrecioRelevadoDto(999_999, 2019, new DateOnly(2026, 8, 3), "Usd", 10_000m, 9_000m, 11_000m, 5, "MercadoLibre"),
+            ]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+    }
+
+    /// <summary>
+    /// Un promedio fuera del rango relevado es un relevamiento mal armado, y guardarlo
+    /// contamina la serie para siempre.
+    /// </summary>
+    [Fact]
+    public async Task Un_promedio_fuera_del_rango_se_rechaza()
+    {
+        using var cliente = _api.CreateClient();
+        cliente.DefaultRequestHeaders.Add("X-Job-Secret", FabricaDeApi.SecretoDeJobs);
+
+        var respuesta = await cliente.PostAsJsonAsync(
+            "/api/jobs/precios-referencia",
+            new RegistrarPreciosReferenciaRequest([
+                new PrecioRelevadoDto(_api.ModeloId, 2019, new DateOnly(2026, 8, 3), "Usd", 50_000m, 9_000m, 11_000m, 5, "MercadoLibre"),
+            ]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task El_job_de_precios_sin_secreto_responde_401()
+    {
+        using var cliente = _api.CreateClient();
+
+        var respuesta = await cliente.PostAsJsonAsync(
+            "/api/jobs/precios-referencia",
+            new RegistrarPreciosReferenciaRequest([
+                new PrecioRelevadoDto(_api.ModeloId, 2019, new DateOnly(2026, 8, 3), "Usd", 10_000m, 9_000m, 11_000m, 5, "MercadoLibre"),
+            ]));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
+    }
+
+    [Fact]
     public async Task El_job_de_cotizaciones_sin_secreto_responde_401()
     {
         using var cliente = _api.CreateClient();

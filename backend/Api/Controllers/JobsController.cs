@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Entities;
+using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -73,6 +74,87 @@ public sealed class JobsController : ControllerBase
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return Ok(new CotizacionDto(cotizacion.Fecha, cotizacion.UsdUyu));
+    }
+
+    /// <summary>
+    /// Guarda los precios de mercado relevados por el cron.
+    /// </summary>
+    /// <remarks>
+    /// Idempotente por modelo, año, moneda, fecha y fuente: correrlo dos veces el mismo día
+    /// actualiza la fila en vez de duplicar la serie. Es lo que permite reintentar sin
+    /// arruinar el histórico, que es justamente lo que le da valor al dato.
+    /// </remarks>
+    [HttpPost("precios-referencia")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<int>> PreciosDeReferencia(
+        RegistrarPreciosReferenciaRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!SecretoCorrecto())
+        {
+            return Unauthorized();
+        }
+
+        var modelos = request.Precios.Select(p => p.ModeloId).Distinct().ToList();
+
+        var existentes = await _db.Modelos
+            .Where(m => modelos.Contains(m.Id))
+            .Select(m => m.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var faltantes = modelos.Except(existentes).ToList();
+
+        if (faltantes.Count > 0)
+        {
+            return Problem(
+                detail: $"Estos modelos no existen: {string.Join(", ", faltantes)}.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var fechas = request.Precios.Select(p => p.Fecha).Distinct().ToList();
+
+        var yaGuardados = await _db.PreciosReferencia
+            .Where(p => modelos.Contains(p.ModeloId) && fechas.Contains(p.Fecha))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var indice = yaGuardados.ToDictionary(
+            p => (p.ModeloId, p.Anio, p.Moneda, p.Fecha, p.Fuente));
+
+        foreach (var relevado in request.Precios)
+        {
+            var moneda = Enumeraciones.Parsear<Moneda>(relevado.Moneda);
+            var fuente = relevado.Fuente.Trim();
+            var clave = (relevado.ModeloId, relevado.Anio, moneda, relevado.Fecha, fuente);
+
+            if (!indice.TryGetValue(clave, out var precio))
+            {
+                precio = new PrecioReferencia
+                {
+                    ModeloId = relevado.ModeloId,
+                    Anio = relevado.Anio,
+                    Moneda = moneda,
+                    Fecha = relevado.Fecha,
+                    Fuente = fuente,
+                };
+
+                _db.PreciosReferencia.Add(precio);
+                indice[clave] = precio;
+            }
+
+            precio.Promedio = relevado.Promedio;
+            precio.Minimo = relevado.Minimo;
+            precio.Maximo = relevado.Maximo;
+            precio.Muestras = relevado.Muestras;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return Ok(request.Precios.Count);
     }
 
     /// <summary>
