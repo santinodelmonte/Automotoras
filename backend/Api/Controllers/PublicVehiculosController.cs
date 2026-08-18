@@ -296,12 +296,11 @@ public sealed class PublicVehiculosController : ControllerBase
             return;
         }
 
-        // Se serializan los filtros uno por uno y no el objeto entero: así el JSON no
-        // arrastra la paginación, la propiedad calculada ni el id de sesión, que ya va en
-        // su columna. Lo que se guarda es lo que después se agrupa en los reportes.
+        // Se guardan los filtros uno por uno y no el objeto entero: así el JSON no arrastra
+        // la paginación, la propiedad calculada ni el id de sesión, que ya va en su
+        // columna. Y va tipado, porque este es el contrato que después leen los reportes.
         var json = JsonSerializer.Serialize(
-            new
-            {
+            new FiltrosRegistrados(
                 filtros.MarcaId,
                 filtros.ModeloId,
                 filtros.AnioDesde,
@@ -313,8 +312,7 @@ public sealed class PublicVehiculosController : ControllerBase
                 filtros.KmHasta,
                 filtros.Combustible,
                 filtros.Transmision,
-                filtros.Carroceria,
-            },
+                filtros.Carroceria),
             OpcionesDeSerializacion);
 
         _db.Busquedas.Add(new Busqueda
