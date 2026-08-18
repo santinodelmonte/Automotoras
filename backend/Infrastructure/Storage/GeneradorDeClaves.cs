@@ -21,6 +21,10 @@ public static class GeneradorDeClaves
     public static string CarpetaDeVehiculo(int tenantId, int vehiculoId)
         => string.Create(CultureInfo.InvariantCulture, $"tenants/{tenantId}/vehiculos/{vehiculoId}");
 
+    /// <summary>Carpeta lógica del logo de una automotora.</summary>
+    public static string CarpetaDeLogo(int tenantId)
+        => string.Create(CultureInfo.InvariantCulture, $"tenants/{tenantId}/logo");
+
     /// <summary>
     /// <c>true</c> si la clave es una de las que genera este código. Se chequea antes de
     /// borrar: la clave sale de la base, pero un borrado que acepte cualquier ruta es un
