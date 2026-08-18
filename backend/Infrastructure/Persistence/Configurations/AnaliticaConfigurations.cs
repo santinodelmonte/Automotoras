@@ -73,3 +73,32 @@ public sealed class CotizacionConfiguration : IEntityTypeConfiguration<Cotizacio
         builder.HasIndex(c => c.Fecha).IsUnique();
     }
 }
+
+public sealed class PrecioDeMercadoConfiguration : IEntityTypeConfiguration<PrecioDeMercado>
+{
+    public void Configure(EntityTypeBuilder<PrecioDeMercado> builder)
+    {
+        builder.ToTable("precios_de_mercado");
+
+        builder.HasKey(p => p.Id);
+
+        builder.Property(p => p.Fuente).HasMaxLength(40).IsRequired();
+        builder.Property(p => p.PrecioMediano).HasPrecision(12, 2);
+        builder.Property(p => p.PrecioMinimo).HasPrecision(12, 2);
+        builder.Property(p => p.PrecioMaximo).HasPrecision(12, 2);
+
+        // Un snapshot por fuente, modelo, año y día: el job puede reintentar sin duplicar,
+        // que es lo que lo hace disparable por un cron con reintentos.
+        builder.HasIndex(p => new { p.Fuente, p.ModeloId, p.Anio, p.Fecha }).IsUnique();
+
+        // Y este es el de lectura: siempre se pide el último precio de un modelo y año.
+        builder.HasIndex(p => new { p.ModeloId, p.Anio, p.Fecha });
+
+        // Restrict y no Cascade: un modelo que se borra del catálogo no puede llevarse la
+        // historia de precios, que es de todas las automotoras y no se puede reconstruir.
+        builder.HasOne(p => p.Modelo)
+            .WithMany()
+            .HasForeignKey(p => p.ModeloId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}

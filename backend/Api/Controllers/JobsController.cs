@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Entities;
+using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -73,6 +74,144 @@ public sealed class JobsController : ControllerBase
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return Ok(new CotizacionDto(cotizacion.Fecha, cotizacion.UsdUyu));
+    }
+
+    /// <summary>
+    /// Qué modelos y años conviene cotizar: los que hay publicados hoy en alguna
+    /// automotora.
+    /// </summary>
+    /// <remarks>
+    /// Sin esto el script del cron tendría que cotizar el catálogo entero por doce años de
+    /// antigüedad —miles de consultas a MercadoLibre— para terminar guardando precios que
+    /// no le sirven a nadie. Cotizar lo que está en góndola es una fracción de eso.
+    /// <para>
+    /// Es una lectura cross-tenant deliberada, y por eso está acá y no en un endpoint de
+    /// tenant: lo único que sale son ids del catálogo global y años, sin precios, sin
+    /// cantidades y sin nombre de automotora. Un tenant no puede deducir de esta respuesta
+    /// qué tiene otro.
+    /// </para>
+    /// </remarks>
+    [HttpGet("modelos-a-cotizar")]
+    [ProducesResponseType(typeof(IReadOnlyList<ModeloACotizarDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<ModeloACotizarDto>>> ModelosACotizar(
+        CancellationToken cancellationToken)
+    {
+        if (!SecretoCorrecto())
+        {
+            return Unauthorized();
+        }
+
+        var publicados = await _db.Vehiculos
+            .IgnoreQueryFilters()
+            .Where(v => v.Estado == EstadoVehiculo.Disponible || v.Estado == EstadoVehiculo.Reservado)
+            .Select(v => new
+            {
+                v.ModeloId,
+                Modelo = v.Modelo!.Nombre,
+                Marca = v.Modelo.Marca!.Nombre,
+                v.Anio,
+            })
+            .Distinct()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var modelos = publicados
+            .GroupBy(v => (v.ModeloId, v.Marca, v.Modelo))
+            .Select(g => new ModeloACotizarDto(
+                g.Key.ModeloId,
+                g.Key.Marca,
+                g.Key.Modelo,
+                g.Select(v => v.Anio).Distinct().OrderBy(a => a).ToList()))
+            .OrderBy(m => m.Marca, StringComparer.Ordinal)
+            .ThenBy(m => m.Modelo, StringComparer.Ordinal)
+            .ToList();
+
+        return Ok(modelos);
+    }
+
+    /// <summary>
+    /// Guarda el snapshot de precios de mercado del día. Idempotente por fuente, modelo,
+    /// año y fecha: el cron puede reintentar el lote entero sin duplicar nada.
+    /// </summary>
+    /// <remarks>
+    /// Los modelos que no existen en el catálogo se ignoran en silencio en vez de tumbar
+    /// el lote. Quien arma el snapshot trabaja contra una copia del catálogo que puede
+    /// estar un día atrasada, y perder mil precios buenos porque uno referencia un modelo
+    /// que se dio de baja sería cambiar un dato viejo por ninguno.
+    /// </remarks>
+    [HttpPost("precios-de-mercado")]
+    [ProducesResponseType(typeof(ResultadoDePreciosDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ResultadoDePreciosDto>> PreciosDeMercado(
+        RegistrarPreciosDeMercadoRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!SecretoCorrecto())
+        {
+            return Unauthorized();
+        }
+
+        var pedidos = request.Precios.Select(p => p.ModeloId).Distinct().ToList();
+
+        var conocidos = await _db.Modelos
+            .Where(m => pedidos.Contains(m.Id))
+            .Select(m => m.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var validos = request.Precios.Where(p => conocidos.Contains(p.ModeloId)).ToList();
+
+        if (validos.Count == 0)
+        {
+            return Ok(new ResultadoDePreciosDto(0, 0));
+        }
+
+        // Los existentes de ese día se traen de una y no de a uno: un lote de mil precios
+        // haría mil consultas antes de escribir la primera fila.
+        var existentes = await _db.PreciosDeMercado
+            .Where(p => p.Fecha == request.Fecha
+                        && p.Fuente == request.Fuente
+                        && pedidos.Contains(p.ModeloId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var porClave = existentes.ToDictionary(p => (p.ModeloId, p.Anio));
+        var guardados = 0;
+        var actualizados = 0;
+
+        foreach (var precio in validos)
+        {
+            if (!porClave.TryGetValue((precio.ModeloId, precio.Anio), out var fila))
+            {
+                fila = new PrecioDeMercado
+                {
+                    ModeloId = precio.ModeloId,
+                    Anio = precio.Anio,
+                    Fuente = request.Fuente,
+                    Fecha = request.Fecha,
+                };
+
+                _db.PreciosDeMercado.Add(fila);
+                porClave[(precio.ModeloId, precio.Anio)] = fila;
+                guardados++;
+            }
+            else
+            {
+                actualizados++;
+            }
+
+            fila.Moneda = Enumeraciones.Parsear<Moneda>(precio.Moneda);
+            fila.PrecioMediano = precio.PrecioMediano;
+            fila.PrecioMinimo = precio.PrecioMinimo;
+            fila.PrecioMaximo = precio.PrecioMaximo;
+            fila.Publicaciones = precio.Publicaciones;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return Ok(new ResultadoDePreciosDto(guardados, actualizados));
     }
 
     /// <summary>

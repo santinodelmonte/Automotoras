@@ -94,8 +94,10 @@ public sealed class ReportesController : ControllerBase
         var consultas = await ContarPorVehiculoAsync(
             e => EventosDeContacto.Tipos.Contains(e.Tipo), desde, cancellationToken).ConfigureAwait(false);
 
+        var mercado = await PreciosDeMercadoAsync(publicados, cancellationToken).ConfigureAwait(false);
+
         var filas = publicados
-            .Select(v => Fila(v, vistas, consultas, ahora))
+            .Select(v => Fila(v, vistas, consultas, mercado, ahora))
             .OrderByDescending(f => f.Vistas)
             .ThenBy(f => f.VehiculoId)
             .ToList();
@@ -416,16 +418,54 @@ public sealed class ReportesController : ControllerBase
             .ToDictionaryAsync(x => x.VehiculoId, x => x.Cantidad, cancellationToken)
             .ConfigureAwait(false);
 
+    /// <summary>
+    /// El último precio de referencia de cada modelo y año presentes en el stock.
+    /// </summary>
+    /// <remarks>
+    /// Se traen los snapshots de esos modelos y se elige el más reciente en memoria. Los
+    /// modelos publicados son unas decenas y los snapshots uno por día, así que el volumen
+    /// es chico; hacerlo con una consulta correlacionada por vehículo, en cambio, sería un
+    /// viaje a la base por fila de la tabla.
+    /// </remarks>
+    private async Task<Dictionary<(int ModeloId, int Anio), PrecioDeMercado>> PreciosDeMercadoAsync(
+        IReadOnlyList<Vehiculo> publicados,
+        CancellationToken cancellationToken)
+    {
+        if (publicados.Count == 0)
+        {
+            return [];
+        }
+
+        var modelos = publicados.Select(v => v.ModeloId).Distinct().ToList();
+        var anios = publicados.Select(v => v.Anio).Distinct().ToList();
+
+        var snapshots = await _db.PreciosDeMercado
+            .Where(p => modelos.Contains(p.ModeloId) && anios.Contains(p.Anio))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return snapshots
+            .GroupBy(p => (p.ModeloId, p.Anio))
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.Fecha).First());
+    }
+
     private static DemandaDeVehiculoDto Fila(
         Vehiculo vehiculo,
         IReadOnlyDictionary<int, int> vistas,
         IReadOnlyDictionary<int, int> consultas,
+        IReadOnlyDictionary<(int ModeloId, int Anio), PrecioDeMercado> mercado,
         DateTime ahora)
     {
         var modelo = vehiculo.Modelo!;
         var vistasDelVehiculo = vistas.GetValueOrDefault(vehiculo.Id);
         var consultasDelVehiculo = consultas.GetValueOrDefault(vehiculo.Id);
         var enGondola = MapeosDeVehiculo.DiasEnGondola(vehiculo.FechaPublicacion, vehiculo.FechaVenta, ahora);
+
+        // La referencia solo sirve si está en la misma moneda que el aviso. Convertirla
+        // con la cotización de hoy mezclaría dos fechas —el snapshot es de otro día— y
+        // daría una diferencia que no es ni la de precio ni la de tipo de cambio.
+        var referencia = mercado.GetValueOrDefault((vehiculo.ModeloId, vehiculo.Anio));
+        var comparable = referencia is not null && referencia.Moneda == vehiculo.Moneda ? referencia : null;
 
         return new DemandaDeVehiculoDto(
             vehiculo.Id,
@@ -440,7 +480,10 @@ public sealed class ReportesController : ControllerBase
             vistasDelVehiculo,
             consultasDelVehiculo,
             UmbralesDeDemanda.ConsultasPorCienVistas(vistasDelVehiculo, consultasDelVehiculo),
-            UmbralesDeDemanda.Clasificar(vistasDelVehiculo, consultasDelVehiculo, enGondola).ToString());
+            UmbralesDeDemanda.Clasificar(vistasDelVehiculo, consultasDelVehiculo, enGondola).ToString(),
+            comparable?.PrecioMediano,
+            UmbralesDeDemanda.DiferenciaContraElMercado(vehiculo.Precio, comparable?.PrecioMediano),
+            comparable?.Fecha);
     }
 
     private async Task<ResumenDeDemandaDto> ResumenAsync(

@@ -250,6 +250,16 @@ nada de ningún tenant.
 | `/api/admin/catalogo/*` | SuperAdmin | ABM de marcas, modelos y versiones |
 | `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
 | `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
+| `GET /api/jobs/modelos-a-cotizar` | Cron externo | Qué modelos y años están publicados, para no cotizar el catálogo entero |
+| `POST /api/jobs/precios-de-mercado` | Cron externo | Snapshot diario de precios de referencia |
+
+**Reportes de demanda** — solo Owner
+
+| Endpoint | Qué hace |
+| --- | --- |
+| `GET /api/reportes/demanda` | Por unidad publicada: días en góndola, vistas, consultas, ratio y señal |
+| `GET /api/reportes/busquedas-sin-resultado` | Las búsquedas vacías, agrupadas por lo que se buscaba |
+| `GET /api/reportes/sugerencias` | Qué conviene comprar, cruzando esa demanda contra el stock |
 
 ## Decisiones de fase 1
 

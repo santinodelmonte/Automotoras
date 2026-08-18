@@ -74,6 +74,19 @@ public static class UmbralesDeDemanda
     }
 
     /// <summary>
+    /// Cuánto se aparta el precio publicado del de mercado, en porcentaje.
+    /// </summary>
+    /// <remarks>
+    /// Positivo es más caro que el mercado. Se redondea a un decimal porque la precisión
+    /// de la referencia —una mediana de unas pocas decenas de avisos— no da para más, y
+    /// mostrar dos decimales sería fingir una exactitud que el dato no tiene.
+    /// </remarks>
+    public static decimal? DiferenciaContraElMercado(decimal precio, decimal? precioDeMercado)
+        => precioDeMercado is null or 0m
+            ? null
+            : Math.Round((precio - precioDeMercado.Value) * 100m / precioDeMercado.Value, 1);
+
+    /// <summary>
     /// Consultas cada cien vistas, con un decimal. Se expresa por cien y no como
     /// porcentaje entre cero y uno porque los valores reales viven entre el 1 % y el 10 %,
     /// y redondeados a entero serían todos iguales.
@@ -86,6 +99,20 @@ public static class UmbralesDeDemanda
 /// <param name="Vistas">Vistas de ficha. El listado no cuenta: mirar una grilla no es mirar un auto.</param>
 /// <param name="Consultas">Clics en WhatsApp y en teléfono, que es lo más cerca de una intención de compra que se puede medir.</param>
 /// <param name="Senal">La lectura de esas dos cifras junto con el tiempo en góndola.</param>
+/// <param name="PrecioDeMercado">
+/// La mediana de lo que se pide por ese modelo y año, del último snapshot disponible.
+/// <c>null</c> cuando todavía no hay referencia, que es lo normal hasta que el job de
+/// precios lleve unos días corriendo.
+/// </param>
+/// <param name="DiferenciaConElMercado">
+/// Cuánto porcentaje está por encima o por debajo del mercado. Va calculada y no como dos
+/// números para que el panel la lea: la resta es trivial, pero hacerla en cada cliente es
+/// la forma segura de que dos pantallas la redondeen distinto.
+/// </param>
+/// <param name="PrecioDeMercadoAl">
+/// Día del snapshot. Viaja siempre: un precio de referencia sin fecha invita a comparar
+/// contra un número de hace medio año como si fuera de hoy.
+/// </param>
 public sealed record DemandaDeVehiculoDto(
     int VehiculoId,
     string Marca,
@@ -99,7 +126,10 @@ public sealed record DemandaDeVehiculoDto(
     int Vistas,
     int Consultas,
     decimal ConsultasPorCienVistas,
-    string Senal);
+    string Senal,
+    decimal? PrecioDeMercado,
+    decimal? DiferenciaConElMercado,
+    DateOnly? PrecioDeMercadoAl);
 
 /// <summary>
 /// El encabezado del reporte: el estado general de la demanda en la ventana pedida.

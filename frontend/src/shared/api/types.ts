@@ -398,6 +398,12 @@ export interface DemandaDeVehiculo {
   consultas: number
   consultasPorCienVistas: number
   senal: SenalDeDemanda
+  /** Mediana de lo que se pide en el mercado por ese modelo y año. `null` hasta que el job de precios corra. */
+  precioDeMercado: number | null
+  /** Porcentaje por encima (positivo) o por debajo del mercado. */
+  diferenciaConElMercado: number | null
+  /** Día del snapshot: un precio de referencia sin fecha se compara como si fuera de hoy. */
+  precioDeMercadoAl: string | null
 }
 
 export interface ResumenDeDemanda {

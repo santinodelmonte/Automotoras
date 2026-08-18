@@ -6,6 +6,7 @@ import { Tarjeta } from '@shared/ui/Tarjeta'
 import { entero, fecha, precio } from '@shared/ui/formato'
 import type {
   BusquedaSinResultado,
+  DemandaDeVehiculo,
   ReporteDeDemanda,
   SenalDeDemanda,
   SugerenciaDeCompra,
@@ -229,6 +230,7 @@ function PorVehiculo({ reporte }: { reporte: ReporteDeDemanda }) {
               <th className="pb-2 text-right font-medium">Vistas</th>
               <th className="pb-2 text-right font-medium">Consultas</th>
               <th className="pb-2 text-right font-medium">Cada 100</th>
+              <th className="pb-2 text-right font-medium">vs. mercado</th>
               <th className="pb-2 text-right font-medium">Señal</th>
             </tr>
           </thead>
@@ -252,6 +254,9 @@ function PorVehiculo({ reporte }: { reporte: ReporteDeDemanda }) {
                   {fila.consultasPorCienVistas.toLocaleString('es-UY')}
                 </td>
                 <td className="py-3 text-right">
+                  <ContraElMercado fila={fila} />
+                </td>
+                <td className="py-3 text-right">
                   <span
                     className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ETIQUETAS[fila.senal].clase}`}
                   >
@@ -264,6 +269,31 @@ function PorVehiculo({ reporte }: { reporte: ReporteDeDemanda }) {
         </table>
       </div>
     </section>
+  )
+}
+
+/**
+ * Cuánto se aparta el precio publicado del de mercado.
+ *
+ * Mientras no haya snapshot dice "sin referencia" y no un cero: un cero se lee como que el
+ * mercado lo regala. Cuando lo hay, la fecha va en el `title` — comparar contra un número
+ * de hace tres meses y no saberlo es peor que no comparar.
+ */
+function ContraElMercado({ fila }: { fila: DemandaDeVehiculo }) {
+  if (fila.diferenciaConElMercado === null || fila.precioDeMercado === null) {
+    return <span className="text-xs text-slate-400">Sin referencia</span>
+  }
+
+  const arriba = fila.diferenciaConElMercado > 0
+
+  return (
+    <span
+      title={`Mercado: ${precio(fila.precioDeMercado, fila.moneda)} al ${fecha(fila.precioDeMercadoAl)}`}
+      className={arriba ? 'font-semibold text-rose-700' : 'font-semibold text-emerald-700'}
+    >
+      {arriba ? '+' : ''}
+      {fila.diferenciaConElMercado.toLocaleString('es-UY')}%
+    </span>
   )
 }
 
