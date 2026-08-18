@@ -2,7 +2,10 @@ using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Infrastructure.Auth;
 using AutomotoraSaaS.Infrastructure.MultiTenancy;
+using AutomotoraSaaS.Core.Storage;
+using AutomotoraSaaS.Infrastructure.Analitica;
 using AutomotoraSaaS.Infrastructure.Persistence;
+using AutomotoraSaaS.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,6 +48,25 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasherPbkdf2>();
         services.AddSingleton<GeneradorDeTokens>();
         services.AddScoped<IServicioDeAutenticacion, ServicioDeAutenticacion>();
+
+        // Hashea las IPs de los eventos. Sin estado y con la sal ya materializada.
+        services.AddSingleton<HasheadorDeIp>();
+
+        // Storage de imágenes. El proveedor se elige por configuración y no por #if de
+        // compilación: el mismo binario tiene que poder correr local y en producción.
+        services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.Seccion));
+
+        var storage = configuration.GetSection(StorageOptions.Seccion).Get<StorageOptions>()
+                      ?? new StorageOptions();
+
+        if (storage.EsLocal)
+        {
+            services.AddSingleton<IImageStorage, LocalImageStorage>();
+        }
+        else
+        {
+            services.AddSingleton<IImageStorage, R2ImageStorage>();
+        }
 
         services.AddDbContext<AppDbContext>(options =>
         {

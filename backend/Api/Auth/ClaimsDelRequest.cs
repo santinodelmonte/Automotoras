@@ -34,6 +34,18 @@ public static class ClaimsDelRequest
     public static bool EsSuperAdmin(this ClaimsPrincipal principal)
         => string.Equals(principal.RolDelToken(), Roles.SuperAdmin, StringComparison.Ordinal);
 
+    /// <summary>
+    /// El precio de costo y el margen los ve el dueño, no el vendedor. Con esto se decide
+    /// qué se proyecta al DTO: el dato no sale del servidor, no se esconde en la pantalla.
+    /// </summary>
+    public static bool PuedeVerCostos(this ClaimsPrincipal principal)
+    {
+        var rol = principal.RolDelToken();
+
+        return string.Equals(rol, Roles.Owner, StringComparison.Ordinal)
+               || string.Equals(rol, Roles.SuperAdmin, StringComparison.Ordinal);
+    }
+
     private static int? LeerEntero(ClaimsPrincipal? principal, string claim)
     {
         var valor = principal?.FindFirstValue(claim);
