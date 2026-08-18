@@ -15,11 +15,14 @@ juntos y por eso el tracking de eventos se instrumenta desde el primer día.
 El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está en
 [docs/brief.md](docs/brief.md).
 
-> **Estado actual: fase 1 completa.** Sitio público por automotora (home, listado con
-> filtros y ficha con WhatsApp), panel con ABM de vehículos, fotos, cambio de estado,
-> usuarios, configuración y tablero, panel de SuperAdmin (automotoras, catálogo y
-> aprobación de modelos), tracking de eventos y jobs por endpoint. Lo que sigue es la
-> fase 2: los reportes de demanda que estos datos ya están alimentando.
+> **Estado actual: fase 1 completa, fase 2 empezada.** Sitio público por automotora,
+> panel con ABM de vehículos y fotos, panel de SuperAdmin, tracking de eventos y jobs por
+> endpoint. De la fase 2 ya está el reporte de demanda: qué unidad se mira y no se
+> consulta, cuál lleva tiempo sin que nadie la vea, y qué le están pidiendo a la
+> automotora que no tiene en stock.
+>
+> Cada push compila la solución en Release y corre los tests en GitHub Actions
+> ([`.github/workflows`](.github/workflows)). Ahí se verifican de verdad las dos mitades.
 
 ## Requisitos previos
 
@@ -229,6 +232,7 @@ nada de ningún tenant.
 | `GET/POST/PUT /api/users` | Owner | Vendedores de la automotora |
 | `GET/PUT /api/tenant`, `POST /api/tenant/logo` | Owner | Identidad visual y contacto |
 | `GET /api/dashboard` | Owner | Stock por estado y demanda de 30 días |
+| `GET /api/reportes/demanda` | Owner | Reporte de demanda: señales por unidad y demanda insatisfecha |
 
 **Sitio público** — sin autenticación, con el tenant resuelto por dominio o slug
 
@@ -250,6 +254,32 @@ nada de ningún tenant.
 | `/api/admin/catalogo/*` | SuperAdmin | ABM de marcas, modelos y versiones |
 | `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
 | `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
+
+## El reporte de demanda
+
+Es el diferencial del producto y lo primero de la fase 2. El catálogo lo tiene cualquiera;
+lo que no tiene nadie es la respuesta a *qué conviene comprar*, y sale de cruzar tres cosas
+que la aplicación viene registrando desde antes de que existiera un solo reporte.
+
+**Por unidad publicada** se cruzan las vistas con las consultas y sale una señal:
+
+| Señal | Cuándo | Qué suele significar |
+| --- | --- | --- |
+| `PrecioAlto` | ≥25 vistas y menos de 3 consultas cada 100 | La miran y no preguntan: casi siempre es el precio |
+| `SinInteres` | ≥45 días publicada y <15 vistas | El problema es que no la están viendo: fotos, título o demanda del modelo |
+| `Normal` | El resto, con datos suficientes | La proporción es la esperable |
+| `PocosDatos` | Menos de 25 vistas | Con cinco visitas, una consulta da 20 % y ninguna da 0 %: los dos números son ruido |
+
+Cada unidad viene con la señal explicada en una frase. El número solo no sirve: lo que el
+dueño necesita es saber qué hacer con él.
+
+**La demanda insatisfecha** son las búsquedas que no devolvieron nada, agrupadas por lo que
+se pidió. Es lo más parecido a una lista de compras escrita por los propios compradores.
+
+Los umbrales viven juntos en
+[`UmbralesDeDemanda`](backend/Core/Reportes/ReporteDeDemanda.cs), con nombre y explicación:
+son las perillas que hay que mover cuando haya datos reales de varias automotoras, y tienen
+que poder discutirse leyendo.
 
 ## Decisiones de fase 1
 

@@ -368,6 +368,57 @@ export interface Dashboard {
   masVistos: VehiculoMasVisto[]
 }
 
+// ---------------------------------------------------------------- reportes
+
+/**
+ * Lo que el comportamiento de los compradores dice sobre una unidad.
+ *
+ * Es una señal, no un veredicto: el reporte sugiere dónde mirar, la decisión la toma quien
+ * conoce el negocio.
+ */
+export type SenalDeDemanda = 'PocosDatos' | 'Normal' | 'PrecioAlto' | 'SinInteres'
+
+export interface VehiculoEnGondola {
+  vehiculoId: number
+  marca: string
+  modelo: string
+  version: string | null
+  anio: number
+  precio: number
+  moneda: string
+  estado: EstadoVehiculo
+  fotoPortadaUrl: string | null
+  diasEnGondola: number
+  vistas: number
+  consultas: number
+  consultasPorCienVistas: number
+  senal: SenalDeDemanda
+  /** La señal explicada en una frase, para no dejar el número solo. */
+  lectura: string
+}
+
+export interface DemandaInsatisfecha {
+  marca: string | null
+  modelo: string | null
+  carroceria: string | null
+  combustible: string | null
+  transmision: string | null
+  anioDesde: number | null
+  precioHasta: number | null
+  moneda: string | null
+  veces: number
+  ultimaVez: string
+  descripcion: string
+}
+
+export interface ReporteDeDemanda {
+  diasAnalizados: number
+  vistasTotales: number
+  consultasTotales: number
+  vehiculos: VehiculoEnGondola[]
+  demandaInsatisfecha: DemandaInsatisfecha[]
+}
+
 // ---------------------------------------------------------------- superadmin
 
 export interface TenantAdmin {

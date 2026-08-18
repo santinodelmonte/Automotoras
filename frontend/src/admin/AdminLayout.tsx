@@ -6,6 +6,7 @@ import { useSesion } from '@shared/auth/useSesion'
 const enlaces = [
   { a: '/admin', texto: 'Tablero', roles: ['Owner'], exacto: true },
   { a: '/admin/vehiculos', texto: 'Vehículos', roles: ['Owner', 'Seller'], exacto: false },
+  { a: '/admin/demanda', texto: 'Demanda', roles: ['Owner'], exacto: false },
   { a: '/admin/usuarios', texto: 'Usuarios', roles: ['Owner'], exacto: false },
   { a: '/admin/configuracion', texto: 'Configuración', roles: ['Owner'], exacto: false },
   { a: '/admin/automotoras', texto: 'Automotoras', roles: ['SuperAdmin'], exacto: false },

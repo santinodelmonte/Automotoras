@@ -19,6 +19,7 @@ import type {
   OpcionesDeCatalogo,
   PaginaDe,
   ProblemDetails,
+  ReporteDeDemanda,
   RegistrarEventoRequest,
   ResolverSolicitudRequest,
   Sesion,
@@ -334,6 +335,11 @@ export const api = {
   },
 
   dashboard: (signal?: AbortSignal) => request<Dashboard>('/api/dashboard', { signal }),
+
+  reportes: {
+    demanda: (dias: number, signal?: AbortSignal) =>
+      request<ReporteDeDemanda>(`/api/reportes/demanda${query({ dias })}`, { signal }),
+  },
 
   admin: {
     tenants: (signal?: AbortSignal) => request<TenantAdmin[]>('/api/admin/tenants', { signal }),

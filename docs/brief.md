@@ -55,8 +55,13 @@ Monorepo:
 ```
 
 > **Avance:** pasos 0 (esqueleto), 2 (modelo de datos), 3 (autenticación, roles y
-> resolución de tenant) y 4 (features de fase 1) están hechos. Lo que sigue es la fase 2:
-> los reportes de demanda, que los datos que ya se están acumulando alimentan.
+> resolución de tenant) y 4 (features de fase 1) están hechos. De la fase 2 ya está el
+> reporte de demanda. Faltan las sugerencias de compra derivadas, el precio de referencia
+> vía MercadoLibre, los dominios custom automatizados y los benchmarks anonimizados.
+>
+> El backend se verifica en GitHub Actions: cada push compila en Release y corre los
+> tests. Se agregó porque el código se escribió en un entorno sin SDK de .NET, y sin eso
+> no había forma de saber si compilaba.
 >
 > Desvíos respecto de este documento, decididos durante la implementación:
 > - Se agregó la tabla `solicitudes_modelo`, que no está en la lista de tablas pero es
@@ -302,9 +307,9 @@ un mínimo de N registros para publicarse.
 
 ### Fase 2 — no construir todavía, pero dejar el modelo de datos preparado
 
-- Reportes de demanda: días en góndola por vehículo, ratio consultas/vistas, vehículos con
-  muchas vistas y pocas consultas (señal de precio alto), búsquedas sin resultados
-  agrupadas
+- Reportes de demanda ✅ hecho: días en góndola por vehículo, ratio consultas/vistas,
+  vehículos con muchas vistas y pocas consultas (señal de precio alto), búsquedas sin
+  resultados agrupadas
 - Sugerencias de compra basadas en demanda insatisfecha
 - Precio de referencia de mercado vía API pública de MercadoLibre, con snapshots diarios en
   tabla propia
