@@ -200,6 +200,73 @@ public sealed class ReportesTests : IClassFixture<FabricaDeApi>
         Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
     }
 
+    /// <summary>
+    /// El precio de mercado convierte "quizás sea el precio" en un número. Sin relevamiento
+    /// el campo va en null: nulo es "no sabemos", nunca "vale cero".
+    /// </summary>
+    [Fact]
+    public async Task El_precio_de_mercado_aparece_en_el_reporte_con_su_diferencia()
+    {
+        SembrarPrecioDeMercado(_api.ModeloId, anio: 2019, promedio: 12_000m);
+
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+        var reporte = await cliente.GetFromJsonAsync<ReporteDeDemandaDto>("/api/reportes/demanda?dias=90");
+
+        Assert.NotNull(reporte);
+
+        var analizado = reporte.Vehiculos.Single(v => v.VehiculoId == _api.VehiculoDeNorte);
+
+        Assert.Equal(12_000m, analizado.PrecioDeMercado);
+
+        // El vehículo está publicado a 15.000 sobre un mercado de 12.000: 25 % arriba.
+        Assert.NotNull(analizado.DiferenciaConElMercado);
+        Assert.Equal(25.0, analizado.DiferenciaConElMercado.Value, precision: 1);
+        Assert.Contains("por encima del promedio de mercado", analizado.Lectura, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Sin_relevamiento_el_precio_de_mercado_va_en_null()
+    {
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+
+        var alta = await cliente.PostAsJsonAsync("/api/vehiculos", new GuardarVehiculoRequest(
+            _api.ModeloId, null, 2007, 210_000, "Nafta", "Manual", "Verde", 5, "1.4",
+            4_200m, "Usd", null, false, null, null));
+
+        alta.EnsureSuccessStatusCode();
+        var sinRelevar = await alta.Content.ReadFromJsonAsync<VehiculoDto>();
+        Assert.NotNull(sinRelevar);
+
+        var reporte = await cliente.GetFromJsonAsync<ReporteDeDemandaDto>("/api/reportes/demanda?dias=90");
+        Assert.NotNull(reporte);
+
+        var analizado = reporte.Vehiculos.Single(v => v.VehiculoId == sinRelevar.Id);
+
+        Assert.Null(analizado.PrecioDeMercado);
+        Assert.Null(analizado.DiferenciaConElMercado);
+    }
+
+    private void SembrarPrecioDeMercado(int modeloId, int anio, decimal promedio)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.PreciosReferencia.Add(new PrecioReferencia
+        {
+            ModeloId = modeloId,
+            Anio = anio,
+            Fecha = DateOnly.FromDateTime(DateTime.UtcNow),
+            Moneda = Moneda.Usd,
+            Promedio = promedio,
+            Minimo = promedio - 2_000m,
+            Maximo = promedio + 2_000m,
+            Muestras = 37,
+            Fuente = "MercadoLibre",
+        });
+
+        db.SaveChanges();
+    }
+
     private static FiltrosRegistrados Pedido(string carroceria) =>
         new(null, null, 2018, null, "Usd", null, 20_000m, null, null, null, null, carroceria);
 

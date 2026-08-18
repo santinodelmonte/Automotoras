@@ -221,6 +221,18 @@ export function ReportesPage() {
                               etiqueta="Consultas c/100 vistas"
                               valor={vehiculo.consultasPorCienVistas.toFixed(1)}
                             />
+                            {vehiculo.precioDeMercado !== null && (
+                              <Metrica
+                                etiqueta="Mercado"
+                                valor={precio(vehiculo.precioDeMercado, vehiculo.moneda)}
+                                acento={
+                                  vehiculo.diferenciaConElMercado !== null &&
+                                  vehiculo.diferenciaConElMercado > 0
+                                    ? 'text-amber-700'
+                                    : 'text-emerald-700'
+                                }
+                              />
+                            )}
                           </dl>
                         </div>
                       </div>
@@ -236,11 +248,19 @@ export function ReportesPage() {
   )
 }
 
-function Metrica({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+function Metrica({
+  etiqueta,
+  valor,
+  acento,
+}: {
+  etiqueta: string
+  valor: string
+  acento?: string
+}) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-wide text-slate-400">{etiqueta}</dt>
-      <dd className="font-medium text-slate-700">{valor}</dd>
+      <dd className={`font-medium ${acento ?? 'text-slate-700'}`}>{valor}</dd>
     </div>
   )
 }

@@ -395,6 +395,13 @@ export interface VehiculoEnGondola {
   senal: SenalDeDemanda
   /** La señal explicada en una frase, para no dejar el número solo. */
   lectura: string
+  /**
+   * Promedio relevado para ese modelo y año, o `null` si todavía no se relevó. Nulo es
+   * "no sabemos", nunca "vale cero".
+   */
+  precioDeMercado: number | null
+  /** Porcentaje por encima (positivo) o por debajo (negativo) del promedio de mercado. */
+  diferenciaConElMercado: number | null
 }
 
 export interface DemandaInsatisfecha {

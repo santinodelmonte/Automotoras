@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Publico;
 using AutomotoraSaaS.Core.Reportes;
@@ -161,6 +162,8 @@ public sealed class ServicioDeReportes : IServicioDeReportes
             .GroupBy(c => c.VehiculoId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Cantidad));
 
+        var mercado = await UltimosPreciosDeMercadoAsync(publicados, cancellationToken).ConfigureAwait(false);
+
         return publicados
             .Select(vehiculo =>
             {
@@ -170,6 +173,13 @@ public sealed class ServicioDeReportes : IServicioDeReportes
                 var enGondola = MapeosDeVehiculo.DiasEnGondola(vehiculo.FechaPublicacion, null, ahora);
                 var ratio = mirado == 0 ? 0 : Math.Round(preguntado * 100d / mirado, 1);
                 var senal = Clasificar(mirado, ratio, enGondola);
+
+                var promedioDeMercado = mercado.GetValueOrDefault(
+                    (vehiculo.ModeloId, vehiculo.Anio, vehiculo.Moneda));
+
+                var diferencia = promedioDeMercado is > 0
+                    ? Math.Round((double)((vehiculo.Precio - promedioDeMercado.Value) / promedioDeMercado.Value) * 100, 1)
+                    : (double?)null;
 
                 return new VehiculoEnGondolaDto(
                     vehiculo.Id,
@@ -186,12 +196,47 @@ public sealed class ServicioDeReportes : IServicioDeReportes
                     preguntado,
                     ratio,
                     senal.ToString(),
-                    Explicar(senal, mirado, preguntado, enGondola));
+                    Explicar(senal, mirado, preguntado, enGondola, diferencia),
+                    promedioDeMercado,
+                    diferencia);
             })
             // Lo que necesita decisión primero, y dentro de eso lo que lleva más tiempo parado.
             .OrderBy(v => Prioridad(v.Senal))
             .ThenByDescending(v => v.DiasEnGondola)
             .ToList();
+    }
+
+    /// <summary>
+    /// El relevamiento más reciente de mercado para cada modelo, año y moneda del stock.
+    /// </summary>
+    /// <remarks>
+    /// Solo para las combinaciones que la automotora tiene publicadas: relevar la tabla
+    /// entera para después descartar el 99 % sería trabajo tirado, y esa tabla crece con
+    /// un snapshot por día.
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<(int ModeloId, int Anio, Moneda Moneda), decimal>>
+        UltimosPreciosDeMercadoAsync(IReadOnlyList<Vehiculo> publicados, CancellationToken cancellationToken)
+    {
+        var modelos = publicados.Select(v => v.ModeloId).Distinct().ToList();
+        var anios = publicados.Select(v => v.Anio).Distinct().ToList();
+
+        var relevados = await _db.PreciosReferencia
+            .Where(p => modelos.Contains(p.ModeloId) && anios.Contains(p.Anio))
+            .Select(p => new { p.ModeloId, p.Anio, p.Moneda, p.Fecha, p.Promedio })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // El más reciente de cada combinación. Si dos fuentes relevaron el mismo día, se
+        // promedian: preferir una por orden de inserción sería una decisión invisible.
+        return relevados
+            .GroupBy(p => (p.ModeloId, p.Anio, p.Moneda))
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var ultimaFecha = g.Max(p => p.Fecha);
+                    return g.Where(p => p.Fecha == ultimaFecha).Average(p => p.Promedio);
+                });
     }
 
     /// <summary>
@@ -383,22 +428,45 @@ public sealed class ServicioDeReportes : IServicioDeReportes
             : SenalDeDemanda.Normal;
     }
 
-    private static string Explicar(SenalDeDemanda senal, int vistas, int consultas, int dias) => senal switch
+    private static string Explicar(
+        SenalDeDemanda senal,
+        int vistas,
+        int consultas,
+        int dias,
+        double? diferenciaConElMercado)
     {
-        SenalDeDemanda.SinInteres =>
-            $"Lleva {dias} días publicada y solo {vistas} visitas. El problema es que no la están viendo: "
-            + "revisá las fotos, el título y si el modelo tiene demanda.",
+        var lectura = senal switch
+        {
+            SenalDeDemanda.SinInteres =>
+                $"Lleva {dias} días publicada y solo {vistas} visitas. El problema es que no la están viendo: "
+                + "revisá las fotos, el título y si el modelo tiene demanda.",
 
-        SenalDeDemanda.PrecioAlto =>
-            $"{vistas} personas la miraron y solo {consultas} consultaron. Cuando miran y no preguntan, "
-            + "casi siempre es el precio.",
+            SenalDeDemanda.PrecioAlto =>
+                $"{vistas} personas la miraron y solo {consultas} consultaron. Cuando miran y no preguntan, "
+                + "casi siempre es el precio.",
 
-        SenalDeDemanda.Normal =>
-            $"{consultas} consultas sobre {vistas} visitas. La proporción es la esperable.",
+            SenalDeDemanda.Normal =>
+                $"{consultas} consultas sobre {vistas} visitas. La proporción es la esperable.",
 
-        _ => $"Todavía son {vistas} visitas: hacen falta al menos "
-             + $"{UmbralesDeDemanda.VistasMinimasParaConcluir} para poder decir algo.",
-    };
+            _ => $"Todavía son {vistas} visitas: hacen falta al menos "
+                 + $"{UmbralesDeDemanda.VistasMinimasParaConcluir} para poder decir algo.",
+        };
+
+        // El precio de mercado convierte "quizás sea el precio" en un número. Se menciona
+        // solo cuando la brecha es grande: por debajo de eso, la dispersión normal entre
+        // publicaciones ya la explica, y decirlo sería ruido con apariencia de dato.
+        if (diferenciaConElMercado is { } diferencia
+            && Math.Abs(diferencia) >= UmbralesDeDemanda.DiferenciaDeMercadoNotable)
+        {
+            var comparacion = diferencia > 0
+                ? $"Está {diferencia:0.#} % por encima del promedio de mercado."
+                : $"Está {Math.Abs(diferencia):0.#} % por debajo del promedio de mercado.";
+
+            lectura = $"{lectura} {comparacion}";
+        }
+
+        return lectura;
+    }
 
     private static int Prioridad(string senal) => senal switch
     {

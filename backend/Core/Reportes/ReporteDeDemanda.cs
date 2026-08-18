@@ -49,10 +49,24 @@ public static class UmbralesDeDemanda
 
     /// <summary>Vistas por debajo de las cuales, pasado ese tiempo, la unidad no se está viendo.</summary>
     public const int VistasQueIndicanFaltaDeInteres = 15;
+
+    /// <summary>
+    /// Diferencia con el promedio de mercado a partir de la cual vale la pena mencionarla.
+    /// Por debajo de eso, la dispersión normal entre publicaciones ya explica la brecha.
+    /// </summary>
+    public const double DiferenciaDeMercadoNotable = 8.0;
 }
 
 /// <summary>Una unidad publicada, con lo que se sabe de su demanda.</summary>
 /// <param name="Lectura">La señal explicada en una frase, para no dejar el número solo.</param>
+/// <param name="PrecioDeMercado">
+/// Promedio relevado para ese modelo y año en la misma moneda, o <c>null</c> si todavía no
+/// se relevó. Nulo es "no sabemos", nunca "vale cero".
+/// </param>
+/// <param name="DiferenciaConElMercado">
+/// Cuánto por ciento está por encima (positivo) o por debajo (negativo) del promedio de
+/// mercado. Es el dato que convierte "quizás sea el precio" en un número.
+/// </param>
 public sealed record VehiculoEnGondolaDto(
     int VehiculoId,
     string Marca,
@@ -68,7 +82,9 @@ public sealed record VehiculoEnGondolaDto(
     int Consultas,
     double ConsultasPorCienVistas,
     string Senal,
-    string Lectura);
+    string Lectura,
+    decimal? PrecioDeMercado,
+    double? DiferenciaConElMercado);
 
 /// <summary>
 /// Una combinación de filtros que la gente buscó y no encontró, con cuántas veces pasó.
