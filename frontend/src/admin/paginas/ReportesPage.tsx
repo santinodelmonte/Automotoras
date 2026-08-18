@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { entero, fecha, precio } from '@shared/ui/formato'
-import type { ReporteDeDemanda, SenalDeDemanda } from '@shared/api/types'
+import type { ReporteDeDemanda, SenalDeDemanda, SugerenciaDeCompra } from '@shared/api/types'
 
 const VENTANAS = [30, 60, 90, 180]
 
@@ -24,6 +24,7 @@ const ETIQUETAS: Record<SenalDeDemanda, { texto: string; clase: string }> = {
 export function ReportesPage() {
   const [dias, setDias] = useState(30)
   const [reporte, setReporte] = useState<ReporteDeDemanda | null>(null)
+  const [sugerencias, setSugerencias] = useState<SugerenciaDeCompra[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -37,6 +38,18 @@ export function ReportesPage() {
         if (controlador.signal.aborted) return
         setError(problema instanceof Error ? problema.message : 'No se pudo cargar el reporte.')
       })
+
+    return () => controlador.abort()
+  }, [dias])
+
+  useEffect(() => {
+    const controlador = new AbortController()
+    setSugerencias(null)
+
+    api.reportes
+      .sugerencias(dias, controlador.signal)
+      .then(setSugerencias)
+      .catch(() => undefined)
 
     return () => controlador.abort()
   }, [dias])
@@ -73,6 +86,50 @@ export function ReportesPage() {
         <Esqueleto className="h-96" />
       ) : (
         <>
+          <section>
+            <h2 className="mb-1 font-semibold">Qué conviene traer</h2>
+            <p className="mb-4 text-sm text-slate-500">
+              Lo que más te piden y no tenés, cruzado con lo rápido que vendés cosas
+              parecidas. La demanda dice qué quieren; la rotación dice si conviene.
+            </p>
+
+            {sugerencias === null ? (
+              <Esqueleto className="h-32" />
+            ) : sugerencias.length === 0 ? (
+              <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-400">
+                Todavía no hay una demanda repetida como para sugerir una compra. Hacen falta
+                al menos tres búsquedas de lo mismo sin resultado.
+              </p>
+            ) : (
+              <ol className="flex flex-col gap-2">
+                {sugerencias.map((sugerencia, indice) => (
+                  <li
+                    key={`${sugerencia.descripcion}-${indice}`}
+                    className="rounded-xl border border-slate-200 bg-white p-4"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-semibold">{sugerencia.descripcion}</p>
+                        <p className="mt-1 text-sm text-slate-600">{sugerencia.fundamento}</p>
+                      </div>
+
+                      {sugerencia.diasPromedioParaVender !== null && (
+                        <div className="shrink-0 text-right">
+                          <p className="text-2xl font-bold text-emerald-700">
+                            {sugerencia.diasPromedioParaVender}
+                          </p>
+                          <p className="text-xs uppercase tracking-wide text-slate-400">
+                            días para vender
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
           <section>
             <h2 className="mb-1 font-semibold">Qué te están pidiendo y no tenés</h2>
             <p className="mb-4 text-sm text-slate-500">

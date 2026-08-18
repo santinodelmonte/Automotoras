@@ -23,6 +23,7 @@ import type {
   RegistrarEventoRequest,
   ResolverSolicitudRequest,
   Sesion,
+  SugerenciaDeCompra,
   SolicitudModelo,
   TenantAdmin,
   TenantPublico,
@@ -339,6 +340,9 @@ export const api = {
   reportes: {
     demanda: (dias: number, signal?: AbortSignal) =>
       request<ReporteDeDemanda>(`/api/reportes/demanda${query({ dias })}`, { signal }),
+
+    sugerencias: (dias: number, signal?: AbortSignal) =>
+      request<SugerenciaDeCompra[]>(`/api/reportes/sugerencias${query({ dias })}`, { signal }),
   },
 
   admin: {

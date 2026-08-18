@@ -411,6 +411,27 @@ export interface DemandaInsatisfecha {
   descripcion: string
 }
 
+/**
+ * Qué conviene traer, y por qué.
+ *
+ * `unidadesVendidasSimilares` en `null` no es cero: es que la automotora todavía no vendió
+ * suficientes unidades parecidas como para hablar de rotación.
+ */
+export interface SugerenciaDeCompra {
+  descripcion: string
+  fundamento: string
+  busquedasSinResultado: number
+  ultimaBusqueda: string
+  marca: string | null
+  modelo: string | null
+  carroceria: string | null
+  anioDesde: number | null
+  precioHasta: number | null
+  moneda: string | null
+  unidadesVendidasSimilares: number | null
+  diasPromedioParaVender: number | null
+}
+
 export interface ReporteDeDemanda {
   diasAnalizados: number
   vistasTotales: number

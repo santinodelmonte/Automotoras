@@ -233,6 +233,7 @@ nada de ningún tenant.
 | `GET/PUT /api/tenant`, `POST /api/tenant/logo` | Owner | Identidad visual y contacto |
 | `GET /api/dashboard` | Owner | Stock por estado y demanda de 30 días |
 | `GET /api/reportes/demanda` | Owner | Reporte de demanda: señales por unidad y demanda insatisfecha |
+| `GET /api/reportes/sugerencias` | Owner | Qué conviene traer, cruzando demanda con rotación |
 
 **Sitio público** — sin autenticación, con el tenant resuelto por dominio o slug
 
@@ -276,10 +277,22 @@ dueño necesita es saber qué hacer con él.
 **La demanda insatisfecha** son las búsquedas que no devolvieron nada, agrupadas por lo que
 se pidió. Es lo más parecido a una lista de compras escrita por los propios compradores.
 
+**Las sugerencias de compra** cruzan las dos cosas. La demanda dice *qué quieren*; la
+rotación histórica de la propia automotora dice *si conviene*: un modelo muy buscado que
+después queda seis meses en el patio no es una buena compra. Cada sugerencia viene con su
+fundamento escrito —"11 personas lo buscaron y no lo encontraron; las 4 unidades parecidas
+que vendiste salieron en 24 días promedio"— porque una sugerencia sin fundamento es una
+corazonada con formato de dato, y el producto existe para reemplazar corazonadas.
+
+Dos umbrales cuidan que no diga cualquier cosa: por debajo de tres búsquedas no sugiere
+nada (una persona buscando un modelo raro no es demanda, es una persona), y por debajo de
+dos ventas parecidas no habla de rotación, porque el promedio de una venta es esa venta.
+En ese caso lo dice, en vez de inventar un número.
+
 Los umbrales viven juntos en
-[`UmbralesDeDemanda`](backend/Core/Reportes/ReporteDeDemanda.cs), con nombre y explicación:
-son las perillas que hay que mover cuando haya datos reales de varias automotoras, y tienen
-que poder discutirse leyendo.
+[`ReporteDeDemanda.cs`](backend/Core/Reportes/ReporteDeDemanda.cs), con nombre y
+explicación: son las perillas que hay que mover cuando haya datos reales de varias
+automotoras, y tienen que poder discutirse leyendo.
 
 ## Decisiones de fase 1
 
