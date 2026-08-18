@@ -24,8 +24,20 @@ jobs:
       - name: Restaurar
         run: dotnet restore AutomotoraSaaS.sln
 
+      - name: Restaurar herramientas
+        run: dotnet tool restore
+
       - name: Compilar
         run: dotnet build AutomotoraSaaS.sln --configuration Release --no-restore
 
       - name: Tests
         run: dotnet test AutomotoraSaaS.sln --configuration Release --no-build --verbosity normal
+
+      # Si alguien toca una entidad y se olvida de la migracion, el codigo compila, los
+      # tests pasan contra SQLite creado desde el modelo, y el desfasaje recien aparece en
+      # produccion como una columna que no existe. Esto lo corta acá.
+      - name: Modelo y migraciones sincronizados
+        run: >
+          dotnet dotnet-ef migrations has-pending-model-changes
+          --project backend/Infrastructure
+          --startup-project backend/Infrastructure
