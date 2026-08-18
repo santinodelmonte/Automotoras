@@ -4,7 +4,9 @@ using AutomotoraSaaS.Infrastructure.Auth;
 using AutomotoraSaaS.Infrastructure.MultiTenancy;
 using AutomotoraSaaS.Core.Storage;
 using AutomotoraSaaS.Infrastructure.Analitica;
+using AutomotoraSaaS.Core.Reportes;
 using AutomotoraSaaS.Infrastructure.Persistence;
+using AutomotoraSaaS.Infrastructure.Reportes;
 using AutomotoraSaaS.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -48,6 +50,10 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasherPbkdf2>();
         services.AddSingleton<GeneradorDeTokens>();
         services.AddScoped<IServicioDeAutenticacion, ServicioDeAutenticacion>();
+
+        // Reportes de demanda. Scoped porque cuelgan del DbContext del request, que es lo
+        // que garantiza que solo vean la automotora del token.
+        services.AddScoped<IServicioDeReportes, ServicioDeReportes>();
 
         // Hashea las IPs de los eventos. Sin estado y con la sal ya materializada.
         services.AddSingleton<HasheadorDeIp>();

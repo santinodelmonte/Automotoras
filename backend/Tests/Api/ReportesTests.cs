@@ -133,6 +133,76 @@ public sealed class ReportesTests : IClassFixture<FabricaDeApi>
         Assert.DoesNotContain(reporte.Vehiculos, v => v.VehiculoId == _api.VendidoDeNorte);
     }
 
+    /// <summary>
+    /// Una sola persona buscando un modelo raro no es demanda: es una persona. Sugerir
+    /// comprar por eso sería peor que no sugerir nada.
+    /// </summary>
+    [Fact]
+    public async Task Lo_pedido_pocas_veces_no_se_sugiere()
+    {
+        SembrarBusquedaSinResultado(Pedido("Convertible"), veces: UmbralesDeSugerencia.BusquedasMinimas - 1);
+
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+        var sugerencias = await cliente.GetFromJsonAsync<List<SugerenciaDeCompraDto>>(
+            "/api/reportes/sugerencias?dias=90");
+
+        Assert.NotNull(sugerencias);
+        Assert.DoesNotContain(sugerencias, s => s.Carroceria == "Convertible");
+    }
+
+    [Fact]
+    public async Task Lo_mas_pedido_y_no_encontrado_se_sugiere_con_su_fundamento()
+    {
+        SembrarBusquedaSinResultado(Pedido("Coupe"), veces: 5);
+
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+        var sugerencias = await cliente.GetFromJsonAsync<List<SugerenciaDeCompraDto>>(
+            "/api/reportes/sugerencias?dias=90");
+
+        Assert.NotNull(sugerencias);
+
+        var sugerida = sugerencias.Single(s => s.Carroceria == "Coupe");
+
+        Assert.Equal(5, sugerida.BusquedasSinResultado);
+        Assert.Contains("5 personas", sugerida.Fundamento, StringComparison.Ordinal);
+        Assert.Contains("Coupe", sugerida.Descripcion, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Sin ventas parecidas, la sugerencia lo dice en vez de inventar un promedio. Un
+    /// número sacado de una sola venta es una corazonada con formato de dato.
+    /// </summary>
+    [Fact]
+    public async Task Sin_ventas_parecidas_la_sugerencia_no_inventa_una_rotacion()
+    {
+        SembrarBusquedaSinResultado(Pedido("Minivan"), veces: 4);
+
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+        var sugerencias = await cliente.GetFromJsonAsync<List<SugerenciaDeCompraDto>>(
+            "/api/reportes/sugerencias?dias=90");
+
+        Assert.NotNull(sugerencias);
+
+        var sugerida = sugerencias.Single(s => s.Carroceria == "Minivan");
+
+        Assert.Null(sugerida.DiasPromedioParaVender);
+        Assert.Null(sugerida.UnidadesVendidasSimilares);
+        Assert.Contains("Todavía no vendiste", sugerida.Fundamento, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task El_vendedor_no_entra_a_las_sugerencias()
+    {
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailVendedorNorte);
+
+        var respuesta = await cliente.GetAsync("/api/reportes/sugerencias");
+
+        Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+    }
+
+    private static FiltrosRegistrados Pedido(string carroceria) =>
+        new(null, null, 2018, null, "Usd", null, 20_000m, null, null, null, null, carroceria);
+
     private void SembrarEventos(int vehiculoId, int vistas, int consultas, int? tenantId = null)
     {
         using var scope = _api.Services.CreateScope();

@@ -97,3 +97,49 @@ public sealed record ReporteDeDemandaDto(
     int ConsultasTotales,
     IReadOnlyList<VehiculoEnGondolaDto> Vehiculos,
     IReadOnlyList<DemandaInsatisfechaDto> DemandaInsatisfecha);
+
+/// <summary>
+/// Qué conviene traer, y por qué.
+/// </summary>
+/// <param name="Fundamento">
+/// La razón en una frase. Una sugerencia sin fundamento es una corazonada con formato de
+/// dato, y el producto existe justamente para reemplazar corazonadas.
+/// </param>
+/// <param name="UnidadesVendidasSimilares">
+/// Cuántas unidades parecidas vendió esta automotora. Nulo si nunca vendió ninguna: es
+/// información que falta, no un cero.
+/// </param>
+public sealed record SugerenciaDeCompraDto(
+    string Descripcion,
+    string Fundamento,
+    int BusquedasSinResultado,
+    DateTime UltimaBusqueda,
+    string? Marca,
+    string? Modelo,
+    string? Carroceria,
+    int? AnioDesde,
+    decimal? PrecioHasta,
+    string? Moneda,
+    int? UnidadesVendidasSimilares,
+    int? DiasPromedioParaVender);
+
+/// <summary>
+/// Umbrales de las sugerencias de compra.
+/// </summary>
+public static class UmbralesDeSugerencia
+{
+    /// <summary>
+    /// Búsquedas fallidas mínimas para sugerir algo. Una sola persona buscando un modelo
+    /// raro no es demanda: es una persona.
+    /// </summary>
+    public const int BusquedasMinimas = 3;
+
+    /// <summary>Cuántas sugerencias devolver. Una lista larga no se lee ni se acciona.</summary>
+    public const int Maximo = 10;
+
+    /// <summary>
+    /// Ventas mínimas para animarse a hablar de rotación. Con una sola venta, el promedio
+    /// de días es esa venta.
+    /// </summary>
+    public const int VentasMinimasParaRotacion = 2;
+}
