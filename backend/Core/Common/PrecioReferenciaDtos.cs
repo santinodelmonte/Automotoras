@@ -58,8 +58,11 @@ public sealed class PrecioRelevadoDtoValidator : AbstractValidator<PrecioRelevad
 
         // El promedio tiene que caer adentro del rango. Si no, el relevamiento está mal
         // armado y guardarlo contamina la serie histórica para siempre.
+        //
+        // Va con Must y no con InclusiveBetween porque ese solo compara contra valores
+        // fijos, y acá los extremos son otros campos del mismo relevamiento.
         RuleFor(x => x.Promedio)
-            .InclusiveBetween(x => x.Minimo, x => x.Maximo)
+            .Must((relevado, promedio) => promedio >= relevado.Minimo && promedio <= relevado.Maximo)
             .WithMessage("El promedio tiene que estar entre el mínimo y el máximo.");
 
         RuleFor(x => x.Fecha)
