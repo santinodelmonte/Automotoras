@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Text.Json;
 using AutomotoraSaaS.Core.Analitica;
 using AutomotoraSaaS.Core.Auth;
+using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Reportes;
@@ -134,6 +135,111 @@ public sealed class ReportesController : ControllerBase
     }
 
     /// <summary>
+    /// Qué conviene comprar, según lo que se buscó y no estaba.
+    /// </summary>
+    /// <param name="dias">Ventana en días. Por defecto noventa.</param>
+    /// <remarks>
+    /// Es el reporte anterior cruzado contra el patio, y ese cruce es todo el valor: una
+    /// búsqueda vacía de pickups significa una cosa si no hay ninguna publicada y otra
+    /// bien distinta si hay tres. En el primer caso hay que comprar; en el segundo, mirar
+    /// el precio, el año o las fotos de lo que ya está.
+    /// <para>
+    /// Las búsquedas que no nombran ni marca, ni modelo, ni carrocería —solo un precio o
+    /// un kilometraje— quedan afuera. Aparecen en el reporte de búsquedas sin resultado,
+    /// donde se pueden leer, pero no se traducen a "comprá esto": nadie sale a comprar un
+    /// vehículo de hasta quince mil dólares sin saber de qué.
+    /// </para>
+    /// </remarks>
+    [HttpGet("sugerencias")]
+    [ProducesResponseType(typeof(IReadOnlyList<SugerenciaDeCompraDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<SugerenciaDeCompraDto>>> Sugerencias(
+        [FromQuery] int? dias,
+        CancellationToken cancellationToken)
+    {
+        var ventana = VentanaDeReporte.Normalizar(dias ?? UmbralesDeSugerencia.DiasPorDefecto);
+        var desde = _reloj.GetUtcNow().UtcDateTime.AddDays(-ventana);
+
+        var grupos = await AgruparBusquedasSinResultadoAsync(desde, cancellationToken).ConfigureAwait(false);
+
+        var candidatos = grupos
+            .Where(g => g.Sesiones >= UmbralesDeSugerencia.VisitasMinimas)
+            .Where(g => g.ModeloId is not null || g.MarcaId is not null || g.Carroceria is not null)
+            .ToList();
+
+        if (candidatos.Count == 0)
+        {
+            return Ok(Array.Empty<SugerenciaDeCompraDto>());
+        }
+
+        var stock = await StockPublicadoAsync(cancellationToken).ConfigureAwait(false);
+
+        var sugerencias = candidatos
+            .Select(g =>
+            {
+                var unidades = UnidadesQueEncajan(stock, g);
+
+                return new SugerenciaDeCompraDto(
+                    (unidades == 0 ? TipoDeSugerencia.Comprar : TipoDeSugerencia.RevisarLoQueTenes).ToString(),
+                    g.MarcaId,
+                    g.Marca,
+                    g.ModeloId,
+                    g.Modelo,
+                    g.Carroceria,
+                    g.AnioDesde,
+                    g.AnioHasta,
+                    g.Moneda,
+                    g.PresupuestoTipico,
+                    g.Sesiones,
+                    g.Veces,
+                    g.UltimaVez,
+                    unidades);
+            })
+            .OrderByDescending(s => s.Visitas)
+            .ThenByDescending(s => s.Busquedas)
+            .Take(UmbralesDeSugerencia.Maximo)
+            .ToList();
+
+        return Ok(sugerencias);
+    }
+
+    /// <summary>
+    /// El stock publicado, reducido a lo que hace falta para el cruce. Se trae una vez y
+    /// se cuenta en memoria: son decenas de filas, y una consulta por sugerencia serían
+    /// veinte viajes a la base para contestar una sola pantalla.
+    /// </summary>
+    private async Task<IReadOnlyList<UnidadPublicada>> StockPublicadoAsync(CancellationToken cancellationToken)
+        => await _db.Vehiculos
+            .Where(v => v.Estado == EstadoVehiculo.Disponible || v.Estado == EstadoVehiculo.Reservado)
+            .Select(v => new UnidadPublicada(v.ModeloId, v.Modelo!.MarcaId, v.Modelo.Carroceria))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <summary>
+    /// Cuántas unidades publicadas caen dentro de lo que pedía el grupo, de lo más
+    /// específico a lo más general: si la búsqueda nombró un modelo, lo que importa es ese
+    /// modelo y no cuántos autos de la marca hay.
+    /// </summary>
+    private static int UnidadesQueEncajan(IReadOnlyList<UnidadPublicada> stock, BusquedaSinResultadoDto grupo)
+    {
+        if (grupo.ModeloId is not null)
+        {
+            return stock.Count(u => u.ModeloId == grupo.ModeloId);
+        }
+
+        if (grupo.MarcaId is not null)
+        {
+            return stock.Count(u => u.MarcaId == grupo.MarcaId);
+        }
+
+        var carroceria = Enumeraciones.ParsearOpcional<Carroceria>(grupo.Carroceria);
+
+        return carroceria is null ? 0 : stock.Count(u => u.Carroceria == carroceria);
+    }
+
+    /// <summary>Una unidad publicada, con lo justo para saber si encaja en una búsqueda.</summary>
+    private sealed record UnidadPublicada(int ModeloId, int MarcaId, Carroceria Carroceria);
+
+    /// <summary>
     /// Agrupa las búsquedas vacías por marca, modelo y carrocería, y les pone los nombres
     /// del catálogo.
     /// </summary>
@@ -185,6 +291,29 @@ public sealed class ReportesController : ControllerBase
                     .OrderByDescending(m => m.Count())
                     .Select(m => m.Key)
                     .FirstOrDefault(),
+                Topes = g.Select(x => x.Filtros!).ToList(),
+            })
+            .Select(g => new
+            {
+                g.MarcaId,
+                g.ModeloId,
+                g.Carroceria,
+                g.Veces,
+                g.Sesiones,
+                g.UltimaVez,
+                g.AnioDesde,
+                g.AnioHasta,
+                g.PrecioDesde,
+                g.PrecioHasta,
+                g.Moneda,
+
+                // Solo los topes de la moneda dominante: mezclar dólares con pesos daría
+                // una mediana que no es plata de ninguna de las dos.
+                PresupuestoTipico = Mediana(g.Topes
+                    .Where(f => f.PrecioHasta is not null
+                                && string.Equals(f.Moneda, g.Moneda, StringComparison.OrdinalIgnoreCase))
+                    .Select(f => f.PrecioHasta!.Value)
+                    .ToList()),
             })
             .OrderByDescending(g => g.Sesiones)
             .ThenByDescending(g => g.Veces)
@@ -208,10 +337,29 @@ public sealed class ReportesController : ControllerBase
                 g.Moneda,
                 g.PrecioDesde,
                 g.PrecioHasta,
+                g.PresupuestoTipico,
                 g.Veces,
                 g.Sesiones,
                 g.UltimaVez))
             .ToList();
+    }
+
+    /// <summary>
+    /// La mediana de una lista de importes, o <c>null</c> si no hay ninguno.
+    /// </summary>
+    private static decimal? Mediana(IReadOnlyList<decimal> valores)
+    {
+        if (valores.Count == 0)
+        {
+            return null;
+        }
+
+        var ordenados = valores.OrderBy(v => v).ToList();
+        var medio = ordenados.Count / 2;
+
+        return ordenados.Count % 2 == 1
+            ? ordenados[medio]
+            : Math.Round((ordenados[medio - 1] + ordenados[medio]) / 2m, 2);
     }
 
     private static FiltrosDeBusquedaGuardados? Parsear(string json)

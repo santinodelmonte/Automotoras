@@ -138,6 +138,11 @@ public sealed record ReporteDeDemandaDto(
 /// Cuántas visitas distintas. Es la cifra que importa: veinte búsquedas de una sola
 /// persona indecisa no son demanda, veinte de veinte personas sí.
 /// </param>
+/// <param name="PresupuestoTipico">
+/// La mediana de los topes de precio pedidos, en la moneda más pedida del grupo. La
+/// mediana y no el promedio: un solo visitante con un tope de cien mil correría el
+/// promedio hasta un presupuesto que no tiene nadie.
+/// </param>
 public sealed record BusquedaSinResultadoDto(
     int? MarcaId,
     string? Marca,
@@ -149,6 +154,7 @@ public sealed record BusquedaSinResultadoDto(
     string? Moneda,
     decimal? PrecioDesde,
     decimal? PrecioHasta,
+    decimal? PresupuestoTipico,
     int Veces,
     int Sesiones,
     DateTime UltimaVez);
