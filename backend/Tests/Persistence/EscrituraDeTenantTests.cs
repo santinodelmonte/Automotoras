@@ -130,6 +130,73 @@ public sealed class EscrituraDeTenantTests : IClassFixture<BaseDeDatosDePrueba>
         Assert.NotEqual(default, vehiculo.UpdatedAt);
     }
 
+    /// <summary>
+    /// Los usuarios quedan afuera de <c>ITenantEntity</c> porque su tenant es anulable,
+    /// pero se sellan igual. Sin esto, la gestión de vendedores sería el único lugar del
+    /// sistema donde un <c>tenant_id</c> ajeno pasa sin que nadie lo mire.
+    /// </summary>
+    [Fact]
+    public void Al_dar_de_alta_un_usuario_sin_tenant_se_sella_el_del_request()
+    {
+        using var contextoA = _db.CrearContexto(BaseDeDatosDePrueba.TenantA);
+
+        var usuario = NuevoUsuario("vendedor.nuevo@norte.uy");
+        contextoA.Users.Add(usuario);
+        contextoA.SaveChanges();
+
+        Assert.Equal(BaseDeDatosDePrueba.TenantA, usuario.TenantId);
+    }
+
+    [Fact]
+    public void Dar_de_alta_un_usuario_dentro_de_otro_tenant_lanza()
+    {
+        using var contextoA = _db.CrearContexto(BaseDeDatosDePrueba.TenantA);
+
+        var usuario = NuevoUsuario("colado@sur.uy");
+        usuario.TenantId = BaseDeDatosDePrueba.TenantB;
+        contextoA.Users.Add(usuario);
+
+        Assert.Throws<TenantIsolationException>(() => contextoA.SaveChanges());
+    }
+
+    /// <summary>
+    /// Un usuario sin tenant es un SuperAdmin. Crearlo requiere el escape cross-tenant
+    /// explícito, no se puede colar desde el alta de vendedores de una automotora.
+    /// </summary>
+    [Fact]
+    public void Crear_un_superadmin_necesita_el_escape_cross_tenant()
+    {
+        using var contexto = _db.CrearContexto(tenantId: null);
+
+        var usuario = NuevoUsuario("otro.super@saas.uy");
+        usuario.Rol = RolUsuario.SuperAdmin;
+        contexto.Users.Add(usuario);
+
+        Assert.Throws<TenantIsolationException>(() => contexto.SaveChanges());
+    }
+
+    [Fact]
+    public void Modificar_un_usuario_de_otro_tenant_lanza()
+    {
+        using var contextoB = _db.CrearContexto(BaseDeDatosDePrueba.TenantB);
+
+        var ajeno = contextoB.Users
+            .IgnoreQueryFilters()
+            .Single(u => u.Email == "owner@norte.uy");
+
+        ajeno.Nombre = "Nombre cambiado";
+
+        Assert.Throws<TenantIsolationException>(() => contextoB.SaveChanges());
+    }
+
+    private static User NuevoUsuario(string email) => new()
+    {
+        Email = email,
+        PasswordHash = "x",
+        Nombre = "Usuario de prueba",
+        Rol = RolUsuario.Seller,
+    };
+
     private static Vehiculo NuevoVehiculo() => new()
     {
         ModeloId = 1,

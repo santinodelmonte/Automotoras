@@ -54,8 +54,9 @@ Monorepo:
 /docs
 ```
 
-> **Avance:** paso 0 (esqueleto) y paso 2 (modelo de datos, entidades y migración inicial)
-> están hechos. Sigue el paso 3: autenticación, roles y resolución de tenant.
+> **Avance:** pasos 0 (esqueleto), 2 (modelo de datos), 3 (autenticación, roles y
+> resolución de tenant) y 4 (features de fase 1) están hechos. Lo que sigue es la fase 2:
+> los reportes de demanda, que los datos que ya se están acumulando alimentan.
 >
 > Desvíos respecto de este documento, decididos durante la implementación:
 > - Se agregó la tabla `solicitudes_modelo`, que no está en la lista de tablas pero es
@@ -64,6 +65,34 @@ Monorepo:
 >   `System.Version`.
 > - `vehiculo_fotos` no lleva `tenant_id` propio, como dice el brief; su filtro global
 >   navega hasta el tenant del vehículo.
+> - El slug del sitio público viaja como prefijo de ruta (`/t/{slug}/api/public/...`) y el
+>   middleware lo pasa a `PathBase`. Así los controllers declaran su ruta una sola vez y
+>   funcionan igual detrás de un dominio propio que detrás del slug de desarrollo.
+> - El aislamiento de escritura se extendió a `users`, que no implementa `ITenantEntity`
+>   porque su tenant es anulable. Sin eso, la gestión de vendedores era el único lugar
+>   donde un `tenant_id` ajeno pasaba sin que nadie lo mirara.
+> - El endpoint de gestión de usuarios (`/api/users`) se adelantó al paso 3: es el recurso
+>   de tenant que hacía falta para escribir el test de aislamiento end-to-end que pide el
+>   criterio de aceptación número uno.
+> - El `session_id` del tracking lo genera y guarda el cliente en `localStorage`, no una
+>   cookie de primera parte como pide el brief. El sitio y la API viven en orígenes
+>   distintos —y con dominio propio por automotora eso no cambia—, así que una cookie
+>   puesta por la API sería de tercera parte: los navegadores la bloquean por defecto y el
+>   dato se perdería justo donde más tráfico hay.
+> - El mensaje de WhatsApp dice "que vi en la web" y no "que vieron en la web": lo escribe
+>   el comprador, no la automotora.
+> - Las fotos se suben de a una y ya achicadas por el navegador. Un solo request con diez
+>   imágenes de celular es lo que hace que la carga desde el teléfono termine en timeout,
+>   que es justamente el criterio de aceptación número dos.
+> - El sitio público muestra únicamente los vehículos `Disponible`. El brief solo pide que
+>   salgan los vendidos, pero el DTO público no tiene dónde decir "reservado", y mostrar
+>   como disponible algo que no lo está le hace perder el viaje al comprador.
+> - Los reportes SEO por vehículo se resuelven con meta tags puestos desde el cliente y un
+>   sitemap por tenant servido por la API. Los crawlers de Open Graph que no ejecutan
+>   JavaScript necesitan prerenderizado, que no es parte de la fase 1: queda anotado.
+> - El job de cotizaciones recibe el valor en el cuerpo del request en vez de salir a
+>   buscarlo. En shared hosting IIS una llamada saliente colgada se lleva un hilo del app
+>   pool que atiende a todos los tenants, y el cron externo ya tiene que existir igual.
 
 ## Paso 0 — Esqueleto ejecutable ✅ hecho
 
@@ -240,7 +269,7 @@ un mínimo de N registros para publicarse.
 
 ## Alcance por fases
 
-### Fase 1 — construir ahora
+### Fase 1 — construir ahora ✅ hecha
 
 **Sitio público (por tenant):**
 

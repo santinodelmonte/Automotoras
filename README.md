@@ -15,11 +15,11 @@ juntos y por eso el tracking de eventos se instrumenta desde el primer día.
 El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está en
 [docs/brief.md](docs/brief.md).
 
-> **Estado actual: paso 2 — modelo de datos.** El esqueleto corre, el frontend consume la
-> API, y están las entidades, el `DbContext` con los filtros globales por tenant y la
-> migración inicial. Todavía no hay autenticación, resolución de tenant ni features:
-> el `ITenantContext` existe pero nadie lo resuelve aún, así que por diseño no se lee ni
-> se escribe nada.
+> **Estado actual: fase 1 completa.** Sitio público por automotora (home, listado con
+> filtros y ficha con WhatsApp), panel con ABM de vehículos, fotos, cambio de estado,
+> usuarios, configuración y tablero, panel de SuperAdmin (automotoras, catálogo y
+> aprobación de modelos), tracking de eventos y jobs por endpoint. Lo que sigue es la
+> fase 2: los reportes de demanda que estos datos ya están alimentando.
 
 ## Requisitos previos
 
@@ -48,7 +48,31 @@ cd backend/Api && dotnet run
 Queda escuchando en `http://localhost:5080`.
 
 - Health check: <http://localhost:5080/api/health>
-- Swagger (solo en Development): <http://localhost:5080/swagger>
+- Swagger (solo en Development): <http://localhost:5080/swagger>, con el botón
+  *Authorize* para pegar el `accessToken` que devuelve el login
+
+**Hace falta `Jwt:Secret` para que arranque.** Sin clave de firma la API no levanta, y es
+a propósito: una API que arranca igual y firma tokens con una clave vacía es peor que una
+que no arranca. En desarrollo alcanza con un `appsettings.Development.json` (ignorado por
+git) o con la variable de entorno:
+
+```bash
+Jwt__Secret="una-clave-larga-y-aleatoria-de-al-menos-32-chars" dotnet run
+```
+
+### Usuarios de desarrollo
+
+Definí `Seed:Password` y el arranque en Development siembra dos automotoras, sus usuarios
+y el catálogo de marcas y modelos. Es idempotente: se puede correr en cada arranque. Sin
+esa clave el seed no corre — no hay contraseña por defecto, porque una contraseña por
+defecto que sobrevive a producción no la nota nadie hasta que es tarde.
+
+| Usuario | Rol | Entra a |
+| --- | --- | --- |
+| `owner@norte.uy` | Owner | Todo lo de Automotora Norte, incluida la gestión de vendedores |
+| `vendedor@norte.uy` | Seller | Vehículos y consultas de Automotora Norte |
+| `owner@sur.uy` / `vendedor@sur.uy` | Owner / Seller | Lo mismo, en Automotora Sur |
+| `super@automotoras.uy` | SuperAdmin | Cross-tenant, por `/api/admin/*` |
 
 ### Frontend
 
@@ -56,9 +80,11 @@ Queda escuchando en `http://localhost:5080`.
 cd frontend && npm install && npm run dev
 ```
 
-Queda escuchando en <http://localhost:5173> y muestra en pantalla la respuesta de
-`GET /api/health`. Levantá el backend primero o la pantalla va a mostrar el error de
-conexión.
+Queda escuchando en <http://localhost:5173>. Levantá el backend primero.
+
+- `/admin/login` — login del panel privado
+- `/admin` — panel, protegido por rol
+- `/t/{slug}` — sitio público de una automotora (`/t/norte`, `/t/sur`)
 
 ### Tests
 
@@ -66,10 +92,16 @@ conexión.
 dotnet test
 ```
 
-Los tests de persistencia corren sobre SQLite en memoria, así que no hace falta MySQL para
-ejecutarlos. Se eligió SQLite y no el proveedor `InMemory` a propósito: el `InMemory` no
-traduce a SQL y evalúa los filtros con semántica de C#, con lo cual un filtro de tenant
-roto podría pasar el test igual.
+Los tests corren sobre SQLite en memoria, así que no hace falta MySQL para ejecutarlos. Se
+eligió SQLite y no el proveedor `InMemory` a propósito: el `InMemory` no traduce a SQL y
+evalúa los filtros con semántica de C#, con lo cual un filtro de tenant roto podría pasar
+el test igual.
+
+Hay dos niveles. Los de persistencia van contra el `DbContext` y prueban los filtros
+globales y la política de escritura. Los de integración levantan la API entera con
+`WebApplicationFactory` y van por HTTP: login, renovación, roles y aislamiento. La
+diferencia importa — "la consulta filtra bien" y "el endpoint responde 404" no son lo
+mismo, y lo único que le consta a quien está del otro lado es lo segundo.
 
 ### Migraciones
 
@@ -127,6 +159,123 @@ El acceso cross-tenant del SuperAdmin existe, pero siempre explícito: `IgnoreQu
 para leer y `PermitirEscrituraCrossTenant()` para escribir, únicamente desde los endpoints
 bajo `/api/admin/*`. Nunca por un flag opcional en un endpoint normal.
 
+## Autenticación y resolución de tenant
+
+Es el cimiento: si esto queda mal, todo lo que se apoye encima hay que rehacerlo. Por eso
+va antes que cualquier pantalla.
+
+### Cómo se resuelve el tenant
+
+[`ResolucionDeTenantMiddleware`](backend/Api/MultiTenancy/ResolucionDeTenantMiddleware.cs)
+corre entre `UseAuthentication` y `UseAuthorization`, y tiene exactamente dos caminos que
+no se cruzan:
+
+1. **Panel privado.** El tenant sale del claim `tenant_id`, que está adentro de la firma
+   del JWT. Si el request además trae un slug en la ruta, se ignora. Hay un test que lo
+   comprueba: un Owner de Norte pidiendo `/t/sur/api/users` sigue viendo los usuarios de
+   Norte.
+2. **Sitio público.** Sin token, el tenant sale del `Host` (dominio propio) o del slug de
+   `/t/{slug}`, siempre validado contra la tabla `tenants` y solo si está activo. Si no
+   matchea, 404: no existe una automotora por defecto.
+
+El slug se saca de la ruta y se pasa a `PathBase`, así que los controllers declaran su
+ruta una sola vez y funcionan igual detrás de un dominio propio que detrás del slug de
+desarrollo.
+
+Fuera de esos dos casos el request queda sin tenant — y sin tenant no se lee ni se escribe
+nada de ningún tenant.
+
+### Tokens
+
+- **Access token:** JWT firmado con HMAC-SHA256, quince minutos. Es sin estado y no se
+  puede revocar; lo que lo acota es que venza rápido.
+- **Refresh token:** 32 bytes aleatorios, opaco. En la base vive solo su SHA-256, así que
+  si se filtra la tabla los tokens no son utilizables. Rota en cada uso: el que se canjea
+  se quema. Presentar uno ya canjeado revoca todas las sesiones del usuario — si el token
+  viejo reaparece, o se filtró o alguien está reproduciendo una sesión, y en los dos casos
+  lo prudente es echar a todos.
+- **Contraseñas:** PBKDF2-HMAC-SHA256, 210.000 iteraciones, sal por contraseña. El hash
+  guardado declara algoritmo, costo y sal, así que subir el costo más adelante no invalida
+  las contraseñas existentes.
+
+### Roles
+
+| Rol | Alcance |
+| --- | --- |
+| `SuperAdmin` | Cross-tenant, por endpoints separados bajo `/api/admin/*`. Su token no lleva tenant. |
+| `Owner` | Todo dentro de su automotora, incluida la gestión de vendedores. |
+| `Seller` | Vehículos y consultas. Sin reportes ni analítica. |
+
+### Endpoints
+
+**Sesión**
+
+| Endpoint | Quién | Qué hace |
+| --- | --- | --- |
+| `POST /api/auth/login` | Anónimo | Abre sesión y devuelve el par de tokens |
+| `POST /api/auth/refresh` | Anónimo | Rota el refresh token y renueva el access token |
+| `POST /api/auth/logout` | Anónimo | Revoca el refresh token |
+| `GET /api/auth/me` | Autenticado | El usuario de la sesión, armado con los claims |
+
+**Panel de la automotora**
+
+| Endpoint | Quién | Qué hace |
+| --- | --- | --- |
+| `GET/POST/PUT/DELETE /api/vehiculos` | Owner y Seller (borrar, solo Owner) | ABM de stock |
+| `POST /api/vehiculos/{id}/estado` | Owner y Seller | Cambio rápido de estado |
+| `/api/vehiculos/{id}/fotos` | Owner y Seller | Subir, reordenar, portada y borrar |
+| `GET /api/catalogo/*` | Owner y Seller | Marcas, modelos, versiones y opciones |
+| `POST /api/catalogo/solicitudes-modelo` | Owner y Seller | Pedir el alta de un modelo que falta |
+| `GET/POST/PUT /api/users` | Owner | Vendedores de la automotora |
+| `GET/PUT /api/tenant`, `POST /api/tenant/logo` | Owner | Identidad visual y contacto |
+| `GET /api/dashboard` | Owner | Stock por estado y demanda de 30 días |
+
+**Sitio público** — sin autenticación, con el tenant resuelto por dominio o slug
+
+| Endpoint | Qué hace |
+| --- | --- |
+| `GET /api/public/tenant` | Identidad de la automotora |
+| `GET /api/public/home` | Destacados, recientes y total, en un solo request |
+| `GET /api/public/vehiculos` | Listado con filtros y paginación |
+| `GET /api/public/filtros` | Solo lo que esta automotora tiene publicado |
+| `GET /api/public/vehiculos/{id}` | Ficha, con el mensaje de WhatsApp ya armado |
+| `POST /api/public/events` | Registro de eventos, con límite de tasa por IP |
+| `GET /api/public/sitemap.xml` | Sitemap del tenant |
+
+**SuperAdmin y jobs**
+
+| Endpoint | Quién | Qué hace |
+| --- | --- | --- |
+| `GET/POST/PUT /api/admin/tenants` | SuperAdmin | ABM de automotoras, con su Owner |
+| `/api/admin/catalogo/*` | SuperAdmin | ABM de marcas, modelos y versiones |
+| `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
+| `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
+
+## Decisiones de fase 1
+
+**Las fotos se achican en el navegador y se suben de a una.** Una foto de celular pesa
+entre 3 y 8 MB; diez de esas por 4G son varios minutos y un buen riesgo de que se corte a
+la novena y se pierdan las nueve. Redimensionadas a 1600 px quedan en unos 200 KB, más
+resolución de la que cualquier galería web llega a mostrar. El servidor no procesa
+imágenes: en shared hosting IIS esa CPU se le saca a todos los tenants a la vez.
+
+**El precio de costo no sale del servidor hacia un Seller.** No está oculto en la
+pantalla: viaja en `null`, y el endpoint tampoco lo acepta si lo manda un vendedor.
+
+**El sitio público muestra solo lo disponible.** Los vendidos se mantienen en la base —son
+la mitad de la historia de demanda— pero salen del listado, de la ficha y del sitemap en
+el momento en que se marcan.
+
+**El rango de precio exige moneda.** En Uruguay se publica en dólares y en pesos; un rango
+que cruce las dos no significa nada, así que la API lo rechaza en vez de devolver un
+listado sin sentido.
+
+**Cada búsqueda con filtros queda registrada** con sus filtros y su cantidad de
+resultados. Las que devuelven cero dejan además su propio evento: son la señal más valiosa
+del producto, porque dicen qué le están pidiendo a la automotora que no tiene en stock. Un
+listado sin filtros no se registra: sería ruido que después hay que descartar en cada
+reporte.
+
 ## Variables de entorno
 
 ### Backend
@@ -143,7 +292,7 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | --- | --- | --- |
 | `ConnectionStrings:Default` | `ConnectionStrings__Default` | Conexión a MySQL. |
 | `Jwt:Issuer` / `Jwt:Audience` | `Jwt__Issuer` / `Jwt__Audience` | Emisor y audiencia de los tokens. |
-| `Jwt:Secret` | `Jwt__Secret` | Clave de firma. Mínimo 32 caracteres, aleatoria. Nunca versionar. |
+| `Jwt:Secret` | `Jwt__Secret` | Clave de firma. **Obligatoria:** sin ella la API no arranca. Mínimo 32 caracteres, aleatoria. Nunca versionar. |
 | `Jwt:AccessTokenMinutes` | `Jwt__AccessTokenMinutes` | Vida del access token. |
 | `Jwt:RefreshTokenDays` | `Jwt__RefreshTokenDays` | Vida del refresh token. |
 | `Storage:Provider` | `Storage__Provider` | `Local` en desarrollo, `R2` en producción. |
@@ -152,6 +301,8 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | `Storage:Bucket` / `Storage:Endpoint` | `Storage__Bucket` / `Storage__Endpoint` | Bucket y endpoint S3-compatible (Cloudflare R2). |
 | `Storage:AccessKeyId` / `Storage:SecretAccessKey` | `Storage__AccessKeyId` / `Storage__SecretAccessKey` | Credenciales del object storage. Nunca versionar. |
 | `Jobs:Secret` | `Jobs__Secret` | Valor esperado en el header `X-Job-Secret` de `POST /api/jobs/{nombre}`. |
+| `Analytics:IpHashSalt` | `Analytics__IpHashSalt` | Sal para hashear las IPs de los eventos. Si queda vacía se usa `Jwt:Secret`. |
+| `Seed:Password` | `Seed__Password` | Contraseña de los usuarios de desarrollo. Solo se usa en Development; sin valor, el seed no corre. |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0` | Orígenes del frontend habilitados. En desarrollo, `http://localhost:5173`. |
 
 ### Frontend
@@ -160,7 +311,7 @@ Copiá [`frontend/.env.example`](frontend/.env.example) a `frontend/.env`:
 
 | Variable | Para qué |
 | --- | --- |
-| `VITE_API_BASE_URL` | Base URL de la API. En desarrollo, `http://localhost:5080`. |
+| `VITE_API_BASE_URL` | Base URL de la API. En desarrollo, `http://localhost:5080`. Sin valor se asume el mismo origen, que es el default correcto en producción. |
 
 ## Estructura
 

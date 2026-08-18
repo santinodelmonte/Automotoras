@@ -1,63 +1,110 @@
-import { useEffect, useState } from 'react'
-import { api, ApiError } from '@shared/api/client'
-import type { HealthStatus } from '@shared/api/types'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { AdminLayout } from '@admin/AdminLayout'
+import { InicioDelPanel } from '@admin/InicioDelPanel'
+import { LoginPage } from '@admin/LoginPage'
+import { AutomotorasPage } from '@admin/paginas/AutomotorasPage'
+import { CatalogoPage } from '@admin/paginas/CatalogoPage'
+import { ConfiguracionPage } from '@admin/paginas/ConfiguracionPage'
+import { SolicitudesPage } from '@admin/paginas/SolicitudesPage'
+import { UsuariosPage } from '@admin/paginas/UsuariosPage'
+import { VehiculoFormPage } from '@admin/paginas/VehiculoFormPage'
+import { VehiculosPage } from '@admin/paginas/VehiculosPage'
+import { SitioPublicoLayout } from '@public/SitioPublicoLayout'
+import { FichaPage } from '@public/paginas/FichaPage'
+import { HomePage } from '@public/paginas/HomePage'
+import { ListadoPage } from '@public/paginas/ListadoPage'
+import { RutaProtegida } from '@shared/auth/RutaProtegida'
 
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ok'; health: HealthStatus }
-  | { kind: 'error'; message: string }
-
+/**
+ * El sitio público vive en la raíz y el panel bajo `/admin`.
+ *
+ * Las mismas pantallas públicas se montan dos veces: en la raíz, que es como entra cada
+ * automotora por su dominio propio, y bajo `/t/{slug}`, que es como se trabaja en
+ * desarrollo cuando todavía no hay dominios. En los dos casos el tenant lo resuelve el
+ * servidor —del Host o del slug— y siempre contra la tabla.
+ */
 function App() {
-  const [state, setState] = useState<State>({ kind: 'loading' })
-
-  useEffect(() => {
-    const controller = new AbortController()
-
-    api
-      .health(controller.signal)
-      .then((health) => setState({ kind: 'ok', health }))
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        setState({ kind: 'error', message: describeError(error) })
-      })
-
-    return () => controller.abort()
-  }, [])
-
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400">
-          Automotora SaaS
-        </p>
-        <h1 className="mt-2 text-2xl font-bold text-white">Esqueleto ejecutable</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Verificación de conectividad con <code className="text-slate-300">GET /api/health</code>
-        </p>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/admin/login" element={<LoginPage />} />
 
-        <div className="mt-6 rounded-xl bg-slate-950 p-4 font-mono text-sm">
-          {state.kind === 'loading' && <span className="text-slate-400">Consultando la API…</span>}
+        <Route
+          path="/admin"
+          element={
+            <RutaProtegida>
+              <AdminLayout />
+            </RutaProtegida>
+          }
+        >
+          {/* Una sola ruta índice: adentro decide por rol. Dos rutas índice hermanas no
+              son válidas, y la segunda quedaría muerta sin que nadie lo note. */}
+          <Route index element={<InicioDelPanel />} />
 
-          {state.kind === 'ok' && (
-            <div className="space-y-1">
-              <p className="text-emerald-400">status: {state.health.status}</p>
-              <p className="text-slate-400 break-all">timestamp: {state.health.timestamp}</p>
-            </div>
-          )}
+          <Route path="vehiculos" element={<VehiculosPage />} />
+          <Route path="vehiculos/:id" element={<VehiculoFormPage />} />
 
-          {state.kind === 'error' && <p className="text-rose-400">{state.message}</p>}
-        </div>
+          <Route
+            path="usuarios"
+            element={
+              <RutaProtegida roles={['Owner']}>
+                <UsuariosPage />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="configuracion"
+            element={
+              <RutaProtegida roles={['Owner']}>
+                <ConfiguracionPage />
+              </RutaProtegida>
+            }
+          />
 
-        <p className="mt-4 text-xs text-slate-500 break-all">API: {api.baseUrl}</p>
-      </div>
-    </main>
+          <Route
+            path="automotoras"
+            element={
+              <RutaProtegida roles={['SuperAdmin']}>
+                <AutomotorasPage />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="catalogo"
+            element={
+              <RutaProtegida roles={['SuperAdmin']}>
+                <CatalogoPage />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="solicitudes"
+            element={
+              <RutaProtegida roles={['SuperAdmin']}>
+                <SolicitudesPage />
+              </RutaProtegida>
+            }
+          />
+        </Route>
+
+        {/* Sitio público por dominio propio. */}
+        <Route path="/" element={<SitioPublicoLayout />}>
+          <Route index element={<HomePage />} />
+          <Route path="vehiculos" element={<ListadoPage />} />
+          <Route path="vehiculos/:id" element={<FichaPage />} />
+        </Route>
+
+        {/* Y el mismo sitio por slug, que es como se trabaja en desarrollo. */}
+        <Route path="/t/:slug" element={<SitioPublicoLayout />}>
+          <Route index element={<HomePage />} />
+          <Route path="vehiculos" element={<ListadoPage />} />
+          <Route path="vehiculos/:id" element={<FichaPage />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   )
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof ApiError) return `${error.status} — ${error.message}`
-  if (error instanceof Error) return `No se pudo contactar la API: ${error.message}`
-  return 'No se pudo contactar la API.'
 }
 
 export default App
