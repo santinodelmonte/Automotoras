@@ -21,7 +21,26 @@ public sealed record TenantAdminDto(
     bool Activo,
     DateTime CreatedAt,
     int Usuarios,
-    int Vehiculos);
+    int Vehiculos,
+    DateTime? DominioVerificadoEn);
+
+/// <summary>
+/// Resultado de comprobar si un dominio propio apunta a la aplicación.
+/// </summary>
+/// <param name="Resultado">Nombre del <c>ResultadoDeVerificacion</c>.</param>
+/// <param name="Detalle">La explicación en castellano, para mostrarla tal cual.</param>
+/// <param name="ApuntaA">
+/// A dónde resuelve hoy el dominio. Va incluso cuando la verificación falla —sobre todo
+/// cuando falla—: sin esto, quien está configurando el DNS ve "no funciona" y no tiene con
+/// qué comparar lo que cargó.
+/// </param>
+/// <param name="DeberiaApuntarA">Las IP declaradas de la aplicación.</param>
+public sealed record VerificacionDeDominioDto(
+    string Resultado,
+    string Detalle,
+    DateTime? VerificadoEn,
+    IReadOnlyList<string> ApuntaA,
+    IReadOnlyList<string> DeberiaApuntarA);
 
 /// <summary>
 /// Alta de una automotora. Incluye a su Owner.

@@ -14,6 +14,10 @@ namespace AutomotoraSaaS.Infrastructure.MultiTenancy;
 /// Solo resuelve tenants activos. Dar de baja una automotora tiene que apagarle el sitio,
 /// no dejarlo publicado.
 /// </para>
+/// <para>
+/// Y por dominio propio, solo si está verificado: cargar un dominio es declarar una
+/// intención, servirlo es otra cosa.
+/// </para>
 /// </remarks>
 public sealed class ResolvedorDeTenantPublico
 {
@@ -34,8 +38,12 @@ public sealed class ResolvedorDeTenantPublico
 
         var dominio = NormalizarDominio(host);
 
+        // Verificado, no solamente cargado. Un dominio que alguien escribió en su
+        // configuración pero que nunca se comprobó que apunte acá no sirve el sitio de
+        // nadie: si no, cualquier automotora podría reservarse el dominio de otra empresa
+        // y quedarse con su tráfico el día que ese dominio apunte para acá.
         return await _db.Tenants
-            .Where(t => t.Activo && t.DominioCustom == dominio)
+            .Where(t => t.Activo && t.DominioCustom == dominio && t.DominioVerificadoEn != null)
             .Select(t => (int?)t.Id)
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);

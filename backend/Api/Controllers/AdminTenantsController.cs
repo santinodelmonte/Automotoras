@@ -2,6 +2,7 @@ using AutomotoraSaaS.Core.Admin;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,11 +29,22 @@ public sealed class AdminTenantsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IPasswordHasher _hasher;
+    private readonly IResolvedorDeDns _dns;
+    private readonly IConfiguration _configuracion;
+    private readonly TimeProvider _reloj;
 
-    public AdminTenantsController(AppDbContext db, IPasswordHasher hasher)
+    public AdminTenantsController(
+        AppDbContext db,
+        IPasswordHasher hasher,
+        IResolvedorDeDns dns,
+        IConfiguration configuracion,
+        TimeProvider reloj)
     {
         _db = db;
         _hasher = hasher;
+        _dns = dns;
+        _configuracion = configuracion;
+        _reloj = reloj;
     }
 
     [HttpGet]
@@ -179,6 +191,14 @@ public sealed class AdminTenantsController : ControllerBase
             return Conflicto("Ya hay otra automotora con ese dominio.");
         }
 
+        // Cambiar el dominio invalida la verificación anterior, que era sobre otro dominio.
+        // Sin esto, alguien podría verificar un dominio propio y después reemplazarlo por
+        // el de otra empresa quedándose con el sello.
+        if (!string.Equals(tenant.DominioCustom, dominio, StringComparison.Ordinal))
+        {
+            tenant.DominioVerificadoEn = null;
+        }
+
         tenant.Slug = slug;
         tenant.Nombre = request.Nombre.Trim();
         tenant.DominioCustom = dominio;
@@ -193,6 +213,67 @@ public sealed class AdminTenantsController : ControllerBase
 
         return Ok(ADto(tenant, usuarios, vehiculos));
     }
+
+    /// <summary>
+    /// Comprueba que el dominio propio de la automotora apunte a la aplicación, y lo
+    /// habilita si es así.
+    /// </summary>
+    /// <remarks>
+    /// Hasta que esto pasa, el sitio público no responde por ese dominio. Cargar un dominio
+    /// es declarar una intención; servirlo requiere haber comprobado que quien lo declaró
+    /// lo controla, y apuntarlo a estas IP es esa comprobación.
+    /// <para>
+    /// Se dispara a mano y no en cada request: una consulta de DNS por visita sería una
+    /// llamada saliente en el camino caliente del sitio, y el dato cambia una vez en la
+    /// vida del dominio.
+    /// </para>
+    /// <para>
+    /// Cuando falla, no se pierde la verificación anterior. Un DNS que no contesta en el
+    /// momento en que alguien aprieta el botón no es motivo para bajarle el sitio a una
+    /// automotora que viene funcionando.
+    /// </para>
+    /// </remarks>
+    [HttpPost("{id:int}/verificar-dominio")]
+    [ProducesResponseType(typeof(VerificacionDeDominioDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VerificacionDeDominioDto>> VerificarDominio(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var tenant = await _db.Tenants
+            .FirstOrDefaultAsync(t => t.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (tenant is null)
+        {
+            return NoExiste(id);
+        }
+
+        var declaradas = IpsDeclaradas();
+
+        var resueltas = string.IsNullOrWhiteSpace(tenant.DominioCustom)
+            ? []
+            : await _dns.DireccionesDeAsync(tenant.DominioCustom, cancellationToken).ConfigureAwait(false);
+
+        var resultado = VerificacionDeDominio.Evaluar(tenant.DominioCustom, resueltas, declaradas);
+
+        if (resultado == ResultadoDeVerificacion.Verificado)
+        {
+            tenant.DominioVerificadoEn = _reloj.GetUtcNow().UtcDateTime;
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return Ok(new VerificacionDeDominioDto(
+            resultado.ToString(),
+            VerificacionDeDominio.Explicacion(resultado),
+            tenant.DominioVerificadoEn,
+            resueltas,
+            declaradas));
+    }
+
+    /// <summary>Las IP públicas de la aplicación, declaradas en la configuración.</summary>
+    private string[] IpsDeclaradas()
+        => _configuracion.GetSection(VerificacionDeDominio.ClaveDeIps).Get<string[]>() ?? [];
 
     private async Task<(int Usuarios, int Vehiculos)> ContarAsync(int tenantId, CancellationToken cancellationToken)
     {
@@ -237,7 +318,8 @@ public sealed class AdminTenantsController : ControllerBase
             tenant.Activo,
             tenant.CreatedAt,
             usuarios,
-            vehiculos);
+            vehiculos,
+            tenant.DominioVerificadoEn);
 
     private static string? Dominio(string? valor)
         => string.IsNullOrWhiteSpace(valor) ? null : valor.Trim().ToLowerInvariant();

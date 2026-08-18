@@ -4,6 +4,7 @@ using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Storage;
+using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -64,6 +65,7 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
             ["Cors__AllowedOrigins__0"] = "http://localhost:5173",
             ["Jobs__Secret"] = SecretoDeJobs,
             ["Analytics__IpHashSalt"] = "sal-de-tests-estable",
+            ["Deploy__IpsPublicas__0"] = IpDeLaAplicacion,
 
             // El seed de arranque no corre fuera de Development, pero si alguien hereda
             // una variable de su shell, que no se cuele en la base de los tests.
@@ -127,6 +129,12 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     /// <summary>Storage en memoria. Los tests no tocan el disco ni salen a la red.</summary>
     public AlmacenamientoDePrueba Almacenamiento { get; } = new();
 
+    /// <summary>DNS de mentira: los tests declaran a dónde apunta cada dominio.</summary>
+    public DnsDePrueba Dns { get; } = new();
+
+    /// <summary>La IP que la configuración de los tests declara como propia.</summary>
+    public const string IpDeLaAplicacion = "190.64.10.20";
+
     public const string EmailOwnerNorte = "owner@norte.uy";
     public const string EmailOwnerSur = "owner@sur.uy";
     public const string EmailVendedorNorte = "vendedor@norte.uy";
@@ -134,6 +142,9 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     public const string EmailSuperAdmin = "super@saas.uy";
 
     public const string DominioDeNorte = "automotoranorte.uy";
+
+    /// <summary>Cargado pero sin verificar: no sirve el sitio de nadie.</summary>
+    public const string DominioSinVerificarDeSur = "automotorasur.uy";
 
     public const string SecretoDeJobs = "secreto-de-jobs-para-los-tests";
 
@@ -216,6 +227,9 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
             servicios.RemoveAll<IImageStorage>();
             servicios.AddSingleton<IImageStorage>(Almacenamiento);
+
+            servicios.RemoveAll<IResolvedorDeDns>();
+            servicios.AddSingleton<IResolvedorDeDns>(Dns);
         });
     }
 
@@ -240,11 +254,23 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
             Slug = "norte",
             Nombre = "Automotora Norte",
             DominioCustom = DominioDeNorte,
+
+            // Verificado: es la automotora que ya tiene su dominio funcionando, y por eso
+            // el sitio le responde por ahí.
+            DominioVerificadoEn = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
             ColorPrimario = "#059669",
             Whatsapp = "+59899111222",
         };
 
-        var sur = new Tenant { Slug = "sur", Nombre = "Automotora Sur" };
+        // Sur declaró un dominio y todavía no lo verificó. Es el estado en el que está una
+        // automotora entre que se lo cargan y que toca su DNS, y el sitio no le responde
+        // por ahí hasta entonces.
+        var sur = new Tenant
+        {
+            Slug = "sur",
+            Nombre = "Automotora Sur",
+            DominioCustom = DominioSinVerificarDeSur,
+        };
         var apagada = new Tenant { Slug = "apagada", Nombre = "Automotora Apagada", Activo = false };
 
         db.Tenants.AddRange(norte, sur, apagada);

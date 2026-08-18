@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { entero, fecha } from '@shared/ui/formato'
-import type { TenantAdmin } from '@shared/api/types'
+import type { TenantAdmin, VerificacionDeDominio } from '@shared/api/types'
 
 export function AutomotorasPage() {
   const [tenants, setTenants] = useState<TenantAdmin[] | null>(null)
@@ -10,6 +10,8 @@ export function AutomotorasPage() {
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [errores, setErrores] = useState<Record<string, string[]>>({})
   const [creando, setCreando] = useState(false)
+  const [verificaciones, setVerificaciones] = useState<Record<number, VerificacionDeDominio>>({})
+  const [verificando, setVerificando] = useState<number | null>(null)
 
   const [formulario, setFormulario] = useState({
     slug: '',
@@ -70,6 +72,24 @@ export function AutomotorasPage() {
     }
   }
 
+  async function verificar(tenant: TenantAdmin) {
+    setMensaje(null)
+    setVerificando(tenant.id)
+
+    try {
+      const resultado = await api.admin.verificarDominio(tenant.id)
+      setVerificaciones((previas) => ({ ...previas, [tenant.id]: resultado }))
+
+      // Recargar la lista y no solo guardar el resultado: si quedó verificado, la fila
+      // tiene que dejar de decir que no lo está.
+      if (resultado.resultado === 'Verificado') await cargar()
+    } catch (problema) {
+      setMensaje(problema instanceof ApiError ? problema.message : 'No se pudo verificar el dominio.')
+    } finally {
+      setVerificando(null)
+    }
+  }
+
   async function alternar(tenant: TenantAdmin) {
     setMensaje(null)
 
@@ -115,6 +135,15 @@ export function AutomotorasPage() {
                   {tenant.dominioCustom && ` · ${tenant.dominioCustom}`} · desde{' '}
                   {fecha(tenant.createdAt)}
                 </p>
+
+                {tenant.dominioCustom && (
+                  <EstadoDelDominio
+                    tenant={tenant}
+                    verificacion={verificaciones[tenant.id]}
+                    verificando={verificando === tenant.id}
+                    onVerificar={() => void verificar(tenant)}
+                  />
+                )}
               </div>
 
               <div className="flex items-center gap-4 text-sm">
@@ -214,6 +243,63 @@ export function AutomotorasPage() {
           {mensaje && <p className="text-sm text-slate-600">{mensaje}</p>}
         </div>
       </form>
+    </div>
+  )
+}
+
+/**
+ * El estado del dominio propio de una automotora, y el botón para comprobarlo.
+ *
+ * Mientras no esté verificado se dice explícitamente que el sitio no responde por ahí. Un
+ * dominio cargado que no funciona y no explica por qué es la clase de cosa que termina en
+ * una llamada de la automotora preguntando por qué no anda su web.
+ */
+function EstadoDelDominio({
+  tenant,
+  verificacion,
+  verificando,
+  onVerificar,
+}: {
+  tenant: TenantAdmin
+  verificacion?: VerificacionDeDominio
+  verificando: boolean
+  onVerificar: () => void
+}) {
+  const verificado = tenant.dominioVerificadoEn !== null
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      <span
+        className={`rounded-full px-2.5 py-1 font-semibold ${
+          verificado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+        }`}
+      >
+        {verificado ? `Dominio verificado el ${fecha(tenant.dominioVerificadoEn)}` : 'Dominio sin verificar'}
+      </span>
+
+      {!verificado && (
+        <span className="text-slate-500">
+          El sitio todavía no responde por {tenant.dominioCustom}: falta apuntarlo a la aplicación.
+        </span>
+      )}
+
+      <button
+        type="button"
+        onClick={onVerificar}
+        disabled={verificando}
+        className="rounded-lg border border-slate-300 px-2.5 py-1 hover:border-slate-500 disabled:opacity-50"
+      >
+        {verificando ? 'Verificando…' : 'Verificar'}
+      </button>
+
+      {verificacion && (
+        <p className="basis-full text-slate-600">
+          {verificacion.detalle}
+          {verificacion.apuntaA.length > 0 && ` Hoy resuelve a ${verificacion.apuntaA.join(', ')}.`}
+          {verificacion.deberiaApuntarA.length > 0 &&
+            ` Tiene que apuntar a ${verificacion.deberiaApuntarA.join(' o ')}.`}
+        </p>
+      )}
     </div>
   )
 }

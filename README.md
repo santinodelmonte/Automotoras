@@ -274,6 +274,7 @@ nada de ningún tenant.
 | Endpoint | Quién | Qué hace |
 | --- | --- | --- |
 | `GET/POST/PUT /api/admin/tenants` | SuperAdmin | ABM de automotoras, con su Owner |
+| `POST /api/admin/tenants/{id}/verificar-dominio` | SuperAdmin | Comprueba que el dominio propio apunte acá y lo habilita |
 | `/api/admin/catalogo/*` | SuperAdmin | ABM de marcas, modelos y versiones |
 | `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
 | `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
@@ -350,6 +351,16 @@ script necesita las credenciales de una aplicación creada en `developers.mercad
 (`ML_CLIENT_ID` y `ML_CLIENT_SECRET`); pide el access token en cada corrida, porque uno
 pegado a mano vence en horas y un cron diario lo encuentra siempre vencido.
 
+**Un dominio propio no sirve el sitio hasta que se verifica.** Cargar un dominio es
+declarar una intención; servirlo requiere haber comprobado que quien lo declaró lo
+controla. La comprobación es que el dominio resuelva a alguna de las IP de
+`Deploy:IpsPublicas`: para apuntar un dominio ahí hay que controlar su DNS, que es la
+definición práctica de ser su dueño, y de paso es la condición que igual tiene que cumplirse
+para que el sitio funcione. Sin la verificación, cualquier automotora puede escribir el
+dominio de otra empresa en su configuración y quedárselo para el día en que ese dominio
+apunte para acá. Cambiar el dominio invalida el sello anterior, y una verificación fallida
+no le baja el sitio a quien ya lo tenía andando.
+
 **El benchmark no se publica con muestra chica.** Hacen falta al menos cinco automotoras
 además de la que pregunta, y lo que sale es una mediana entre automotoras — nunca un
 extremo, nunca un nombre, nunca un id. Con dos competidores en un promedio, cada uno despeja
@@ -384,6 +395,7 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | `Storage:Bucket` / `Storage:Endpoint` | `Storage__Bucket` / `Storage__Endpoint` | Bucket y endpoint S3-compatible (Cloudflare R2). |
 | `Storage:AccessKeyId` / `Storage:SecretAccessKey` | `Storage__AccessKeyId` / `Storage__SecretAccessKey` | Credenciales del object storage. Nunca versionar. |
 | `Jobs:Secret` | `Jobs__Secret` | Valor esperado en el header `X-Job-Secret` de `POST /api/jobs/{nombre}`. |
+| `Deploy:IpsPublicas` | `Deploy__IpsPublicas__0` | IP públicas de la aplicación. Es contra lo que se verifica un dominio propio; sin ellas, ningún dominio se puede verificar. |
 | `Analytics:IpHashSalt` | `Analytics__IpHashSalt` | Sal para hashear las IPs de los eventos. Si queda vacía se usa `Jwt:Secret`. |
 | `Seed:Password` | `Seed__Password` | Contraseña de los usuarios de desarrollo. Solo se usa en Development; sin valor, el seed no corre. |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0` | Orígenes del frontend habilitados. En desarrollo, `http://localhost:5173`. |

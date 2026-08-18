@@ -3,6 +3,7 @@ using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Infrastructure.Auth;
 using AutomotoraSaaS.Infrastructure.MultiTenancy;
 using AutomotoraSaaS.Core.Storage;
+using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Analitica;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using AutomotoraSaaS.Infrastructure.Storage;
@@ -91,6 +92,9 @@ public static class DependencyInjection
         {
             services.AddSingleton<IImageStorage, R2ImageStorage>();
         }
+
+        // Sin estado y sin conexiones propias: consulta el DNS del sistema y devuelve.
+        services.AddSingleton<IResolvedorDeDns, ResolvedorDeDnsDelSistema>();
 
         services.AddDbContext<AppDbContext>(options =>
         {

@@ -117,13 +117,13 @@ Monorepo:
 > - El reporte de demanda cubre lo disponible y lo reservado. Un pausado o un vendido con
 >   cero vistas no dice que nadie lo quiera, dice que nadie lo pudo ver, y mezclarlos
 >   correría todos los promedios hacia abajo.
-> - **Los dominios propios automatizados no se implementaron.** El campo `dominio_custom`
->   existe desde la fase 1 y el sitio público ya resuelve el tenant por `Host`, así que un
->   dominio configurado a mano funciona. Lo que falta —emitir el certificado y darlo de alta
->   en el servidor web sin intervención— no tiene API en SmarterASP.NET: se hace desde su
->   panel. Automatizarlo es una decisión de infraestructura (mover el hosting, o poner un
->   proxy con TLS automático delante) antes que de código, y por eso queda anotado en vez de
->   implementado a medias.
+> - **Los dominios propios están a medio camino, y es deliberado.** Lo que sí es código
+>   está hecho: un dominio no sirve el sitio hasta que se verifica que apunta a la
+>   aplicación, la verificación es un endpoint del SuperAdmin, y cambiar el dominio invalida
+>   el sello. Lo que falta es la otra mitad —emitir el certificado TLS y dar de alta el
+>   binding en el servidor web sin intervención—, y eso no tiene API en SmarterASP.NET: se
+>   hace desde su panel. Automatizarlo es una decisión de infraestructura (mover el hosting,
+>   o poner adelante un proxy con TLS automático) antes que de código.
 
 ## Paso 0 — Esqueleto ejecutable ✅ hecho
 

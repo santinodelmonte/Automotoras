@@ -496,6 +496,17 @@ export interface TenantAdmin {
   createdAt: string
   usuarios: number
   vehiculos: number
+  /** Cuándo se comprobó que el dominio apunta acá. `null` mientras no se verificó: hasta entonces no sirve el sitio. */
+  dominioVerificadoEn: string | null
+}
+
+export interface VerificacionDeDominio {
+  resultado: 'Verificado' | 'NoResuelve' | 'ApuntaAOtroLado' | 'SinDominio' | 'SinIpsDeclaradas'
+  detalle: string
+  verificadoEn: string | null
+  /** A dónde resuelve hoy. Viaja sobre todo cuando falla: sin esto no hay con qué comparar lo que se cargó. */
+  apuntaA: string[]
+  deberiaApuntarA: string[]
 }
 
 export interface CrearTenantRequest {

@@ -30,6 +30,7 @@ import type {
   TenantAdmin,
   TenantPublico,
   Usuario,
+  VerificacionDeDominio,
   Vehiculo,
   VehiculoFoto,
   VehiculoPublico,
@@ -365,6 +366,15 @@ export const api = {
 
     crearTenant: (nuevo: CrearTenantRequest) =>
       request<TenantAdmin>('/api/admin/tenants', { method: 'POST', body: nuevo }),
+
+    /**
+     * Comprueba que el dominio propio apunte a la aplicación y lo habilita si es así.
+     *
+     * Se dispara a mano: una consulta de DNS por visita sería una llamada saliente en el
+     * camino caliente del sitio, y el dato cambia una vez en la vida del dominio.
+     */
+    verificarDominio: (id: number) =>
+      request<VerificacionDeDominio>(`/api/admin/tenants/${id}/verificar-dominio`, { method: 'POST' }),
 
     actualizarTenant: (id: number, cambios: ActualizarTenantRequest) =>
       request<TenantAdmin>(`/api/admin/tenants/${id}`, { method: 'PUT', body: cambios }),
