@@ -1,4 +1,6 @@
+using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Common;
+using AutomotoraSaaS.Infrastructure.Auth;
 using AutomotoraSaaS.Infrastructure.MultiTenancy;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +34,17 @@ public static class DependencyInjection
         // Uno por request. Es el que alimenta los filtros globales del DbContext.
         services.AddScoped<TenantContext>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+
+        // Quién resuelve el tenant del sitio público a partir del dominio o del slug.
+        services.AddScoped<ResolvedorDeTenantPublico>();
+
+        // Autenticación. El hasher no tiene estado y el generador de tokens solo guarda la
+        // clave de firma ya materializada, así que los dos son singleton: derivar la clave
+        // en cada request sería trabajo repetido para nada.
+        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.Seccion));
+        services.AddSingleton<IPasswordHasher, PasswordHasherPbkdf2>();
+        services.AddSingleton<GeneradorDeTokens>();
+        services.AddScoped<IServicioDeAutenticacion, ServicioDeAutenticacion>();
 
         services.AddDbContext<AppDbContext>(options =>
         {

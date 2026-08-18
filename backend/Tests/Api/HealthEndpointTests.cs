@@ -1,29 +1,28 @@
 using System.Net;
 using System.Net.Http.Json;
 using AutomotoraSaaS.Core.Health;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace AutomotoraSaaS.Tests.Api;
 
 /// <summary>
-/// Confirma que el pipeline de tests de integración funciona antes de que haya
-/// features que testear.
+/// El health check sigue siendo público y sigue respondiendo con el pipeline completo
+/// montado: autenticación, resolución de tenant y autorización en el medio.
 /// </summary>
-public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthEndpointTests : IClassFixture<FabricaDeApi>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly FabricaDeApi _api;
 
-    public HealthEndpointTests(WebApplicationFactory<Program> factory)
+    public HealthEndpointTests(FabricaDeApi api)
     {
-        _factory = factory;
+        _api = api;
     }
 
     [Fact]
     public async Task Health_responde_200_con_estado_ok()
     {
-        var client = _factory.CreateClient();
+        using var cliente = _api.CreateClient();
 
-        var response = await client.GetAsync("/api/health");
+        var response = await cliente.GetAsync("/api/health");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -31,5 +30,19 @@ public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Pr
         Assert.NotNull(body);
         Assert.Equal("ok", body.Status);
         Assert.NotEqual(default, body.Timestamp);
+    }
+
+    /// <summary>
+    /// Sin tenant resuelto y sin token, el health sigue andando: no es un endpoint de
+    /// ningún tenant.
+    /// </summary>
+    [Fact]
+    public async Task Health_no_necesita_tenant_ni_token()
+    {
+        using var cliente = _api.CreateClient();
+
+        var response = await cliente.GetAsync("/api/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

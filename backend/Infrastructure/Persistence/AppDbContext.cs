@@ -1,3 +1,4 @@
+using System.Globalization;
 using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -207,6 +208,45 @@ public class AppDbContext : DbContext
                 throw new TenantIsolationException(
                     $"Se intentó {DescribirOperacion(entry.State)} un {entry.Entity.GetType().Name} " +
                     $"del tenant {entry.Entity.TenantId} desde el tenant {tenantDelRequest}.");
+            }
+        }
+
+        VerificarPropiedadDeLosUsuarios();
+    }
+
+    /// <summary>
+    /// Lo mismo que <see cref="VerificarPropiedadDelTenant"/>, pero para los usuarios, que
+    /// quedan afuera de <c>ITenantEntity</c> porque su tenant es anulable.
+    /// </summary>
+    /// <remarks>
+    /// Sin esto, la gestión de vendedores sería el único lugar del sistema donde un
+    /// <c>tenant_id</c> ajeno pasa sin que nadie lo mire — justo el agujero por el que un
+    /// Owner podría darse de alta un usuario dentro de otra automotora. Crear un
+    /// SuperAdmin (tenant nulo) requiere el escape cross-tenant explícito.
+    /// </remarks>
+    private void VerificarPropiedadDeLosUsuarios()
+    {
+        foreach (var entry in ChangeTracker.Entries<User>())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted))
+            {
+                continue;
+            }
+
+            var tenantDelRequest = TenantRequerido(nameof(User));
+
+            if (entry.State == EntityState.Added && entry.Entity.TenantId is null)
+            {
+                entry.Entity.TenantId = tenantDelRequest;
+                continue;
+            }
+
+            if (entry.Entity.TenantId != tenantDelRequest)
+            {
+                throw new TenantIsolationException(
+                    $"Se intentó {DescribirOperacion(entry.State)} un {nameof(User)} " +
+                    $"del tenant {entry.Entity.TenantId?.ToString(CultureInfo.InvariantCulture) ?? "global"} " +
+                    $"desde el tenant {tenantDelRequest}.");
             }
         }
     }

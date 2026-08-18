@@ -54,8 +54,9 @@ Monorepo:
 /docs
 ```
 
-> **Avance:** paso 0 (esqueleto) y paso 2 (modelo de datos, entidades y migración inicial)
-> están hechos. Sigue el paso 3: autenticación, roles y resolución de tenant.
+> **Avance:** pasos 0 (esqueleto), 2 (modelo de datos) y 3 (autenticación, roles y
+> resolución de tenant, con los tests de aislamiento) están hechos. Sigue el paso 4: las
+> features de fase 1, empezando por el ABM de vehículos con carga de fotos.
 >
 > Desvíos respecto de este documento, decididos durante la implementación:
 > - Se agregó la tabla `solicitudes_modelo`, que no está en la lista de tablas pero es
@@ -64,6 +65,15 @@ Monorepo:
 >   `System.Version`.
 > - `vehiculo_fotos` no lleva `tenant_id` propio, como dice el brief; su filtro global
 >   navega hasta el tenant del vehículo.
+> - El slug del sitio público viaja como prefijo de ruta (`/t/{slug}/api/public/...`) y el
+>   middleware lo pasa a `PathBase`. Así los controllers declaran su ruta una sola vez y
+>   funcionan igual detrás de un dominio propio que detrás del slug de desarrollo.
+> - El aislamiento de escritura se extendió a `users`, que no implementa `ITenantEntity`
+>   porque su tenant es anulable. Sin eso, la gestión de vendedores era el único lugar
+>   donde un `tenant_id` ajeno pasaba sin que nadie lo mirara.
+> - El endpoint de gestión de usuarios (`/api/users`) se adelantó al paso 3: es el recurso
+>   de tenant que hacía falta para escribir el test de aislamiento end-to-end que pide el
+>   criterio de aceptación número uno.
 
 ## Paso 0 — Esqueleto ejecutable ✅ hecho
 
