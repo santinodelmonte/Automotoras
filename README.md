@@ -15,12 +15,11 @@ juntos y por eso el tracking de eventos se instrumenta desde el primer día.
 El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está en
 [docs/brief.md](docs/brief.md).
 
-> **Estado actual: paso 3 — autenticación, roles y resolución de tenant.** Sobre el modelo
-> de datos ya está el login con JWT y refresh tokens rotativos, los tres roles, y el
-> middleware que resuelve el tenant: del claim firmado en el panel privado, del dominio o
-> del slug en el sitio público. El frontend tiene login, rutas protegidas por rol y
-> renovación automática del token. Lo que falta son las features de fase 1: el ABM de
-> vehículos, las fotos, el catálogo público y el dashboard.
+> **Estado actual: fase 1 completa.** Sitio público por automotora (home, listado con
+> filtros y ficha con WhatsApp), panel con ABM de vehículos, fotos, cambio de estado,
+> usuarios, configuración y tablero, panel de SuperAdmin (automotoras, catálogo y
+> aprobación de modelos), tracking de eventos y jobs por endpoint. Lo que sigue es la
+> fase 2: los reportes de demanda que estos datos ya están alimentando.
 
 ## Requisitos previos
 
@@ -209,14 +208,73 @@ nada de ningún tenant.
 
 ### Endpoints
 
+**Sesión**
+
 | Endpoint | Quién | Qué hace |
 | --- | --- | --- |
 | `POST /api/auth/login` | Anónimo | Abre sesión y devuelve el par de tokens |
 | `POST /api/auth/refresh` | Anónimo | Rota el refresh token y renueva el access token |
 | `POST /api/auth/logout` | Anónimo | Revoca el refresh token |
 | `GET /api/auth/me` | Autenticado | El usuario de la sesión, armado con los claims |
+
+**Panel de la automotora**
+
+| Endpoint | Quién | Qué hace |
+| --- | --- | --- |
+| `GET/POST/PUT/DELETE /api/vehiculos` | Owner y Seller (borrar, solo Owner) | ABM de stock |
+| `POST /api/vehiculos/{id}/estado` | Owner y Seller | Cambio rápido de estado |
+| `/api/vehiculos/{id}/fotos` | Owner y Seller | Subir, reordenar, portada y borrar |
+| `GET /api/catalogo/*` | Owner y Seller | Marcas, modelos, versiones y opciones |
+| `POST /api/catalogo/solicitudes-modelo` | Owner y Seller | Pedir el alta de un modelo que falta |
 | `GET/POST/PUT /api/users` | Owner | Vendedores de la automotora |
-| `GET /api/public/tenant` | Anónimo | Identidad pública de la automotora resuelta |
+| `GET/PUT /api/tenant`, `POST /api/tenant/logo` | Owner | Identidad visual y contacto |
+| `GET /api/dashboard` | Owner | Stock por estado y demanda de 30 días |
+
+**Sitio público** — sin autenticación, con el tenant resuelto por dominio o slug
+
+| Endpoint | Qué hace |
+| --- | --- |
+| `GET /api/public/tenant` | Identidad de la automotora |
+| `GET /api/public/home` | Destacados, recientes y total, en un solo request |
+| `GET /api/public/vehiculos` | Listado con filtros y paginación |
+| `GET /api/public/filtros` | Solo lo que esta automotora tiene publicado |
+| `GET /api/public/vehiculos/{id}` | Ficha, con el mensaje de WhatsApp ya armado |
+| `POST /api/public/events` | Registro de eventos, con límite de tasa por IP |
+| `GET /api/public/sitemap.xml` | Sitemap del tenant |
+
+**SuperAdmin y jobs**
+
+| Endpoint | Quién | Qué hace |
+| --- | --- | --- |
+| `GET/POST/PUT /api/admin/tenants` | SuperAdmin | ABM de automotoras, con su Owner |
+| `/api/admin/catalogo/*` | SuperAdmin | ABM de marcas, modelos y versiones |
+| `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
+| `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
+
+## Decisiones de fase 1
+
+**Las fotos se achican en el navegador y se suben de a una.** Una foto de celular pesa
+entre 3 y 8 MB; diez de esas por 4G son varios minutos y un buen riesgo de que se corte a
+la novena y se pierdan las nueve. Redimensionadas a 1600 px quedan en unos 200 KB, más
+resolución de la que cualquier galería web llega a mostrar. El servidor no procesa
+imágenes: en shared hosting IIS esa CPU se le saca a todos los tenants a la vez.
+
+**El precio de costo no sale del servidor hacia un Seller.** No está oculto en la
+pantalla: viaja en `null`, y el endpoint tampoco lo acepta si lo manda un vendedor.
+
+**El sitio público muestra solo lo disponible.** Los vendidos se mantienen en la base —son
+la mitad de la historia de demanda— pero salen del listado, de la ficha y del sitemap en
+el momento en que se marcan.
+
+**El rango de precio exige moneda.** En Uruguay se publica en dólares y en pesos; un rango
+que cruce las dos no significa nada, así que la API lo rechaza en vez de devolver un
+listado sin sentido.
+
+**Cada búsqueda con filtros queda registrada** con sus filtros y su cantidad de
+resultados. Las que devuelven cero dejan además su propio evento: son la señal más valiosa
+del producto, porque dicen qué le están pidiendo a la automotora que no tiene en stock. Un
+listado sin filtros no se registra: sería ruido que después hay que descartar en cada
+reporte.
 
 ## Variables de entorno
 
@@ -243,6 +301,7 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | `Storage:Bucket` / `Storage:Endpoint` | `Storage__Bucket` / `Storage__Endpoint` | Bucket y endpoint S3-compatible (Cloudflare R2). |
 | `Storage:AccessKeyId` / `Storage:SecretAccessKey` | `Storage__AccessKeyId` / `Storage__SecretAccessKey` | Credenciales del object storage. Nunca versionar. |
 | `Jobs:Secret` | `Jobs__Secret` | Valor esperado en el header `X-Job-Secret` de `POST /api/jobs/{nombre}`. |
+| `Analytics:IpHashSalt` | `Analytics__IpHashSalt` | Sal para hashear las IPs de los eventos. Si queda vacía se usa `Jwt:Secret`. |
 | `Seed:Password` | `Seed__Password` | Contraseña de los usuarios de desarrollo. Solo se usa en Development; sin valor, el seed no corre. |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0` | Orígenes del frontend habilitados. En desarrollo, `http://localhost:5173`. |
 
@@ -252,7 +311,7 @@ Copiá [`frontend/.env.example`](frontend/.env.example) a `frontend/.env`:
 
 | Variable | Para qué |
 | --- | --- |
-| `VITE_API_BASE_URL` | Base URL de la API. En desarrollo, `http://localhost:5080`. |
+| `VITE_API_BASE_URL` | Base URL de la API. En desarrollo, `http://localhost:5080`. Sin valor se asume el mismo origen, que es el default correcto en producción. |
 
 ## Estructura
 
