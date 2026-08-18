@@ -10,9 +10,14 @@ namespace AutomotoraSaaS.Infrastructure.Persistence;
 /// </summary>
 /// <remarks>
 /// Generar una migración no necesita una base viva: solo el modelo. Por eso la versión de
-/// MySQL va declarada y la connection string tiene un valor por defecto inofensivo, que se
-/// puede sobrescribir con <c>ConnectionStrings__Default</c> cuando sí haya que aplicarla
+/// servidor va declarada y la connection string tiene un valor por defecto inofensivo, que
+/// se puede sobrescribir con <c>ConnectionStrings__Default</c> cuando sí haya que aplicarla
 /// contra un servidor real.
+/// <para>
+/// Para aplicar contra MariaDB —lo que trae XAMPP— hay que declararlo también acá, con
+/// <c>Database__ServerVersion=10.4.32-mariadb</c>: el SQL de una migración no es el mismo
+/// para las dos bases.
+/// </para>
 /// </remarks>
 public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
@@ -26,7 +31,10 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
             ?? ConnectionStringPorDefecto;
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseMySql(connectionString, DependencyInjection.VersionMySql)
+            .UseMySql(
+                connectionString,
+                DependencyInjection.ResolverVersion(
+                    Environment.GetEnvironmentVariable("Database__ServerVersion")))
             .UseSnakeCaseNamingConvention()
             .Options;
 

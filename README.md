@@ -31,6 +31,7 @@ El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está 
 | Node.js | 20.19+ / 22.12+ | Probado con Node 24. |
 | npm | 10+ | |
 | MySQL | 8.0 | Necesario para aplicar migraciones y correr contra una base real. La API levanta y `/api/health` responde sin él. |
+| MariaDB | 10.4+ | Alternativa para desarrollo: es lo que trae XAMPP. Hay que declararlo en `Database:ServerVersion` — ver abajo. |
 
 Las herramientas de EF Core están fijadas en el repo ([`.config/dotnet-tools.json`](.config/dotnet-tools.json)).
 Después de clonar:
@@ -60,6 +61,30 @@ git) o con la variable de entorno:
 
 ```bash
 Jwt__Secret="una-clave-larga-y-aleatoria-de-al-menos-32-chars" dotnet run
+```
+
+### La base en desarrollo
+
+Con XAMPP, lo que corre no es MySQL sino MariaDB, y Pomelo genera SQL distinto para cada
+una. La versión se declara en la configuración; el default es MySQL 8, que es lo que hay en
+producción:
+
+```json
+"Database": { "ServerVersion": "10.4.32-mariadb" }
+```
+
+Sigue siendo declarada y no autodetectada: `ServerVersion.AutoDetect` abre una conexión
+durante el arranque, y en IIS eso convierte una base momentáneamente caída en una aplicación
+que no levanta. La versión que corre se ve con `SELECT VERSION();`.
+
+Crear la base y aplicar las migraciones:
+
+```bash
+"C:/xampp/mysql/bin/mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS automotora_saas CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+```bash
+ConnectionStrings__Default="Server=localhost;Port=3306;Database=automotora_saas;User Id=root;Password=;" Database__ServerVersion="10.4.32-mariadb" dotnet dotnet-ef database update --project backend/Infrastructure --startup-project backend/Infrastructure
 ```
 
 ### Usuarios de desarrollo
@@ -314,6 +339,17 @@ los otros jobs y postea el lote. Un snapshot con menos de tres publicaciones se 
 precio de referencia equivocado es peor que ninguno, porque el que falta se nota y el que
 está mal se cree.
 
+**El precio de referencia se convierte a la moneda del aviso** con la cotización del día
+del snapshot, no con la de hoy. Los dos números tienen que quedar parados en la misma fecha:
+convertir un precio de mercado de la semana pasada al tipo de cambio de hoy mezcla la
+diferencia de precio con la del dólar, y el porcentaje que sale no es ninguna de las dos. Sin
+cotización aplicable no hay comparación, y se dice.
+
+**La API de búsqueda de MercadoLibre ya no es abierta.** Responde 403 sin token, así que el
+script necesita las credenciales de una aplicación creada en `developers.mercadolibre.com`
+(`ML_CLIENT_ID` y `ML_CLIENT_SECRET`); pide el access token en cada corrida, porque uno
+pegado a mano vence en horas y un cron diario lo encuentra siempre vencido.
+
 **El benchmark no se publica con muestra chica.** Hacen falta al menos cinco automotoras
 además de la que pregunta, y lo que sale es una mediana entre automotoras — nunca un
 extremo, nunca un nombre, nunca un id. Con dos competidores en un promedio, cada uno despeja
@@ -337,6 +373,7 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | Clave | Variable de entorno | Para qué |
 | --- | --- | --- |
 | `ConnectionStrings:Default` | `ConnectionStrings__Default` | Conexión a MySQL. |
+| `Database:ServerVersion` | `Database__ServerVersion` | Versión del servidor, en el formato de Pomelo (`8.0.36-mysql`, `10.4.32-mariadb`). Sin valor, MySQL 8. |
 | `Jwt:Issuer` / `Jwt:Audience` | `Jwt__Issuer` / `Jwt__Audience` | Emisor y audiencia de los tokens. |
 | `Jwt:Secret` | `Jwt__Secret` | Clave de firma. **Obligatoria:** sin ella la API no arranca. Mínimo 32 caracteres, aleatoria. Nunca versionar. |
 | `Jwt:AccessTokenMinutes` | `Jwt__AccessTokenMinutes` | Vida del access token. |

@@ -78,6 +78,7 @@ public static class SeedDeVehiculos
 
         AgregarEventos(db, vehiculos, ahora, azar);
         AgregarBusquedas(db, tenants, modelos, ahora, azar);
+        AgregarCotizaciones(db, ahora, azar);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -230,6 +231,36 @@ public static class SeedDeVehiculos
                     });
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Una cotización del dólar por día de historia.
+    /// </summary>
+    /// <remarks>
+    /// En producción las pone el cron. Acá hacen falta igual, porque sin ellas el reporte
+    /// de demanda no puede comparar un aviso en pesos contra un precio de referencia en
+    /// dólares, y en desarrollo esa mitad de la flota se ve sin referencia por una razón
+    /// —falta el seed— que no es la que el reporte quiere expresar.
+    /// </remarks>
+    private static void AgregarCotizaciones(AppDbContext db, DateTime ahora, Random azar)
+    {
+        var hoy = DateOnly.FromDateTime(ahora);
+
+        // Arranca cerca del valor real del peso uruguayo y camina de a poco, como se mueve
+        // de verdad: una serie que salta mil pesos entre dos días haría que cualquier
+        // conversión histórica se vea como un error de la aplicación.
+        var valor = 40m;
+
+        for (var dias = DiasDeHistoria; dias >= 0; dias--)
+        {
+            valor += (azar.Next(-20, 21)) / 100m;
+
+            db.Cotizaciones.Add(new Cotizacion
+            {
+                Fecha = hoy.AddDays(-dias),
+                UsdUyu = Math.Round(valor, 4),
+            });
         }
     }
 

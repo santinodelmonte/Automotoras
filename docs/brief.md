@@ -101,6 +101,14 @@ Monorepo:
 > - La consulta a MercadoLibre no vive en la API sino en `tools/precios-de-mercado.mjs`,
 >   por el mismo motivo que el job de cotizaciones, multiplicado: un barrido de precios son
 >   cientos de llamadas salientes en vez de una.
+> - **La "API pública de MercadoLibre" que nombra el brief ya no es pública.** Hoy responde
+>   403 a cualquier búsqueda sin token, verificado contra el endpoint real. El script pide
+>   el access token con las credenciales de una aplicación de MercadoLibre; sin esas
+>   credenciales, la tabla de precios de referencia queda vacía y el reporte lo dice en vez
+>   de inventar un número.
+> - El precio de referencia se convierte a la moneda del aviso con la cotización del día del
+>   snapshot. Sin eso, la mitad del stock uruguayo —el que se publica en pesos— no tenía
+>   comparación posible contra una referencia en dólares.
 > - El benchmark cross-tenant obligó a la única excepción a la regla de que solo
 >   `/api/admin/*` lee cross-tenant. Está acotada a un controller propio, devuelve
 >   exclusivamente medianas entre automotoras y no publica nada por debajo de cinco

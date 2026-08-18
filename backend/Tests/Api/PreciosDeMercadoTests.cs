@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using AutomotoraSaaS.Core.Common;
+using AutomotoraSaaS.Core.Entities;
+using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Reportes;
 
 namespace AutomotoraSaaS.Tests.Api;
@@ -153,6 +155,105 @@ public sealed class PreciosDeMercadoTests : IClassFixture<FabricaDeApi>
 
         // El olvidado es un 2013 y ningún test le carga precio de mercado.
         var fila = reporte.Vehiculos.Single(v => v.VehiculoId == _api.OlvidadoDeNorte);
+
+        Assert.Null(fila.PrecioDeMercado);
+        Assert.Null(fila.DiferenciaConElMercado);
+    }
+
+    /// <summary>
+    /// En Uruguay se publica en las dos monedas. Una referencia en dólares contra un aviso
+    /// en pesos se convierte con la cotización del día del snapshot —no con la de hoy— para
+    /// que los dos números queden parados en la misma fecha.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_en_pesos_se_compara_convirtiendo_con_la_cotizacion_del_snapshot()
+    {
+        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        _api.ConLaBase(db =>
+        {
+            db.Cotizaciones.Add(new Cotizacion { Fecha = hoy, UsdUyu = 40m });
+
+            // Un aviso en pesos: 800.000, con el mercado en 15.000 dólares. A 40 pesos por
+            // dólar, la referencia son 600.000 y el aviso está un 33,3 % arriba.
+            db.Vehiculos.Add(new Vehiculo
+            {
+                TenantId = _api.TenantNorte,
+                ModeloId = _api.ModeloId,
+                Anio = 2011,
+                Kilometraje = 120_000,
+                Combustible = Combustible.Nafta,
+                Transmision = Transmision.Manual,
+                Precio = 800_000m,
+                Moneda = Moneda.Uyu,
+                Estado = EstadoVehiculo.Disponible,
+                FechaPublicacion = DateTime.UtcNow.AddDays(-10),
+            });
+        });
+
+        using var deJob = ClienteDeJob();
+
+        var lote = new RegistrarPreciosDeMercadoRequest(
+            hoy,
+            "MercadoLibre",
+            [new SnapshotDePrecioRequest(_api.ModeloId, 2011, "Usd", 15_000m, 12_000m, 18_000m, 30)]);
+
+        var guardado = await deJob.PostAsJsonAsync("/api/jobs/precios-de-mercado", lote);
+        guardado.EnsureSuccessStatusCode();
+
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+
+        var reporte = await cliente.GetFromJsonAsync<ReporteDeDemandaDto>("/api/reportes/demanda?dias=30");
+
+        Assert.NotNull(reporte);
+
+        var fila = reporte.Vehiculos.Single(v => v.Anio == 2011);
+
+        Assert.Equal(600_000m, fila.PrecioDeMercado);
+        Assert.Equal(33.3m, fila.DiferenciaConElMercado);
+    }
+
+    /// <summary>
+    /// Sin cotización aplicable no hay conversión, y por lo tanto no hay comparación.
+    /// Convertir con un valor inventado sería peor: el número que falta se nota, el que
+    /// está mal se cree.
+    /// </summary>
+    [Fact]
+    public async Task Sin_cotizacion_el_aviso_en_pesos_queda_sin_comparacion()
+    {
+        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        _api.ConLaBase(db => db.Vehiculos.Add(new Vehiculo
+        {
+            TenantId = _api.TenantNorte,
+            ModeloId = _api.ModeloId,
+            Anio = 2009,
+            Kilometraje = 150_000,
+            Combustible = Combustible.Nafta,
+            Transmision = Transmision.Manual,
+            Precio = 500_000m,
+            Moneda = Moneda.Uyu,
+            Estado = EstadoVehiculo.Disponible,
+            FechaPublicacion = DateTime.UtcNow.AddDays(-10),
+        }));
+
+        using var deJob = ClienteDeJob();
+
+        var lote = new RegistrarPreciosDeMercadoRequest(
+            hoy,
+            "MercadoLibre",
+            [new SnapshotDePrecioRequest(_api.ModeloId, 2009, "Usd", 9_000m, 7_000m, 11_000m, 20)]);
+
+        var guardado = await deJob.PostAsJsonAsync("/api/jobs/precios-de-mercado", lote);
+        guardado.EnsureSuccessStatusCode();
+
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+
+        var reporte = await cliente.GetFromJsonAsync<ReporteDeDemandaDto>("/api/reportes/demanda?dias=30");
+
+        Assert.NotNull(reporte);
+
+        var fila = reporte.Vehiculos.Single(v => v.Anio == 2009);
 
         Assert.Null(fila.PrecioDeMercado);
         Assert.Null(fila.DiferenciaConElMercado);

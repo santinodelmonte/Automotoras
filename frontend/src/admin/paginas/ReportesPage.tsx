@@ -397,7 +397,9 @@ function SinResultado({ busquedas }: { busquedas: BusquedaSinResultado[] }) {
               <p className="font-semibold">
                 {entero(busqueda.sesiones)} {busqueda.sesiones === 1 ? 'visita' : 'visitas'}
               </p>
-              <p className="text-slate-500">{entero(busqueda.veces)} búsquedas</p>
+              <p className="text-slate-500">
+                {entero(busqueda.veces)} {busqueda.veces === 1 ? 'búsqueda' : 'búsquedas'}
+              </p>
             </div>
           </li>
         ))}

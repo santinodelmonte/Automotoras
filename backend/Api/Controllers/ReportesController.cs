@@ -49,6 +49,13 @@ public sealed class ReportesController : ControllerBase
     /// </remarks>
     private const int TopeDeBusquedas = 5_000;
 
+    /// <summary>
+    /// Cuántos días para atrás se acepta una cotización cuando falta la del día del
+    /// snapshot. Un mes: el dólar no se mueve tanto en ese plazo como para invalidar una
+    /// comparación que igual se expresa en porcentaje redondeado.
+    /// </summary>
+    private const int DiasDeToleranciaDeCotizacion = 30;
+
     private static readonly JsonSerializerOptions OpcionesDeLectura = new(JsonSerializerDefaults.Web);
 
     private readonly AppDbContext _db;
@@ -96,8 +103,10 @@ public sealed class ReportesController : ControllerBase
 
         var mercado = await PreciosDeMercadoAsync(publicados, cancellationToken).ConfigureAwait(false);
 
+        var cotizaciones = await CotizacionesAsync(mercado.Values, cancellationToken).ConfigureAwait(false);
+
         var filas = publicados
-            .Select(v => Fila(v, vistas, consultas, mercado, ahora))
+            .Select(v => Fila(v, vistas, consultas, mercado, cotizaciones, ahora))
             .OrderByDescending(f => f.Vistas)
             .ThenBy(f => f.VehiculoId)
             .ToList();
@@ -328,11 +337,23 @@ public sealed class ReportesController : ControllerBase
             .ConfigureAwait(false);
 
         return grupos
-            .Select(g => new BusquedaSinResultadoDto(
-                g.MarcaId,
-                g.MarcaId is null ? null : nombres.Marcas.GetValueOrDefault(g.MarcaId.Value),
+            .Select(g =>
+            {
+                var modelo = g.ModeloId is null ? null : nombres.Modelos.GetValueOrDefault(g.ModeloId.Value);
+
+                // Si la búsqueda nombró el modelo, la marca sale de él aunque el filtro no
+                // la traiga: son el mismo dato dicho con menos precisión.
+                var marcaId = g.MarcaId ?? modelo?.MarcaId;
+
+                var marca = marcaId is null
+                    ? null
+                    : nombres.Marcas.GetValueOrDefault(marcaId.Value) ?? modelo?.Marca;
+
+                return new BusquedaSinResultadoDto(
+                marcaId,
+                marca,
                 g.ModeloId,
-                g.ModeloId is null ? null : nombres.Modelos.GetValueOrDefault(g.ModeloId.Value),
+                modelo?.Nombre,
                 g.Carroceria,
                 g.AnioDesde,
                 g.AnioHasta,
@@ -342,7 +363,8 @@ public sealed class ReportesController : ControllerBase
                 g.PresupuestoTipico,
                 g.Veces,
                 g.Sesiones,
-                g.UltimaVez))
+                g.UltimaVez);
+            })
             .ToList();
     }
 
@@ -381,10 +403,11 @@ public sealed class ReportesController : ControllerBase
     /// <summary>
     /// Los nombres de marca y modelo del catálogo, que es global y no lleva tenant.
     /// </summary>
-    private async Task<(Dictionary<int, string> Marcas, Dictionary<int, string> Modelos)> NombresDelCatalogoAsync(
-        IEnumerable<int?> marcas,
-        IEnumerable<int?> modelos,
-        CancellationToken cancellationToken)
+    private async Task<(Dictionary<int, string> Marcas, Dictionary<int, ModeloDelCatalogo> Modelos)>
+        NombresDelCatalogoAsync(
+            IEnumerable<int?> marcas,
+            IEnumerable<int?> modelos,
+            CancellationToken cancellationToken)
     {
         var idsDeMarca = marcas.Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
         var idsDeModelo = modelos.Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
@@ -396,15 +419,22 @@ public sealed class ReportesController : ControllerBase
                 .ToDictionaryAsync(m => m.Id, m => m.Nombre, cancellationToken)
                 .ConfigureAwait(false);
 
+        // El modelo se trae con su marca. El sitio público manda el modelo sin la marca
+        // cuando el visitante eligió directamente el modelo, y un reporte que dice
+        // "Corolla" a secas obliga a quien lo lee a saberse el catálogo de memoria.
         var nombresDeModelo = idsDeModelo.Count == 0
             ? []
             : await _db.Modelos
                 .Where(m => idsDeModelo.Contains(m.Id))
-                .ToDictionaryAsync(m => m.Id, m => m.Nombre, cancellationToken)
+                .Select(m => new ModeloDelCatalogo(m.Id, m.Nombre, m.MarcaId, m.Marca!.Nombre))
+                .ToDictionaryAsync(m => m.Id, m => m, cancellationToken)
                 .ConfigureAwait(false);
 
         return (nombresDeMarca, nombresDeModelo);
     }
+
+    /// <summary>Un modelo del catálogo con su marca al lado.</summary>
+    private sealed record ModeloDelCatalogo(int Id, string Nombre, int MarcaId, string Marca);
 
     private async Task<Dictionary<int, int>> ContarPorVehiculoAsync(
         Expression<Func<Evento, bool>> criterio,
@@ -449,11 +479,78 @@ public sealed class ReportesController : ControllerBase
             .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.Fecha).First());
     }
 
+    /// <summary>
+    /// Las cotizaciones que hacen falta para comparar un aviso en pesos contra una
+    /// referencia en dólares.
+    /// </summary>
+    /// <remarks>
+    /// Se traen las del mes previo al snapshot más viejo y no solo las del día exacto: el
+    /// job de cotizaciones puede no haber corrido un feriado, y perder la comparación de
+    /// media flota por un día sin cotización sería tirar el dato por una razón que no tiene
+    /// que ver con el dato.
+    /// </remarks>
+    private async Task<IReadOnlyList<Cotizacion>> CotizacionesAsync(
+        IReadOnlyCollection<PrecioDeMercado> snapshots,
+        CancellationToken cancellationToken)
+    {
+        if (snapshots.Count == 0)
+        {
+            return [];
+        }
+
+        var desde = snapshots.Min(p => p.Fecha).AddDays(-DiasDeToleranciaDeCotizacion);
+        var hasta = snapshots.Max(p => p.Fecha);
+
+        return await _db.Cotizaciones
+            .Where(c => c.Fecha >= desde && c.Fecha <= hasta)
+            .OrderByDescending(c => c.Fecha)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Pasa el precio de referencia a la moneda del aviso, con la cotización del día del
+    /// snapshot.
+    /// </summary>
+    /// <remarks>
+    /// La del día del snapshot y no la de hoy: los dos números tienen que quedar parados en
+    /// la misma fecha. Convertir un precio de mercado de la semana pasada con la cotización
+    /// de hoy mezcla la diferencia de precio con la del tipo de cambio, y el porcentaje que
+    /// sale no es ninguna de las dos.
+    /// <para>
+    /// Sin cotización aplicable devuelve <c>null</c> y no hay comparación. Es preferible a
+    /// convertir con un valor inventado: el número que falta se nota, el que está mal se
+    /// cree.
+    /// </para>
+    /// </remarks>
+    private static decimal? EnLaMonedaDelAviso(
+        PrecioDeMercado referencia,
+        Moneda monedaDelAviso,
+        IReadOnlyList<Cotizacion> cotizaciones)
+    {
+        if (referencia.Moneda == monedaDelAviso)
+        {
+            return referencia.PrecioMediano;
+        }
+
+        var cotizacion = cotizaciones.FirstOrDefault(c => c.Fecha <= referencia.Fecha);
+
+        if (cotizacion is null || cotizacion.UsdUyu <= 0m)
+        {
+            return null;
+        }
+
+        return monedaDelAviso == Moneda.Uyu
+            ? Math.Round(referencia.PrecioMediano * cotizacion.UsdUyu, 2)
+            : Math.Round(referencia.PrecioMediano / cotizacion.UsdUyu, 2);
+    }
+
     private static DemandaDeVehiculoDto Fila(
         Vehiculo vehiculo,
         IReadOnlyDictionary<int, int> vistas,
         IReadOnlyDictionary<int, int> consultas,
         IReadOnlyDictionary<(int ModeloId, int Anio), PrecioDeMercado> mercado,
+        IReadOnlyList<Cotizacion> cotizaciones,
         DateTime ahora)
     {
         var modelo = vehiculo.Modelo!;
@@ -461,11 +558,14 @@ public sealed class ReportesController : ControllerBase
         var consultasDelVehiculo = consultas.GetValueOrDefault(vehiculo.Id);
         var enGondola = MapeosDeVehiculo.DiasEnGondola(vehiculo.FechaPublicacion, vehiculo.FechaVenta, ahora);
 
-        // La referencia solo sirve si está en la misma moneda que el aviso. Convertirla
-        // con la cotización de hoy mezclaría dos fechas —el snapshot es de otro día— y
-        // daría una diferencia que no es ni la de precio ni la de tipo de cambio.
+        // La referencia se expresa en la moneda del aviso: en Uruguay se publica en las dos
+        // y una comparación que cruce monedas no significa nada. La conversión usa la
+        // cotización del día del snapshot, no la de hoy.
         var referencia = mercado.GetValueOrDefault((vehiculo.ModeloId, vehiculo.Anio));
-        var comparable = referencia is not null && referencia.Moneda == vehiculo.Moneda ? referencia : null;
+
+        var precioDeMercado = referencia is null
+            ? null
+            : EnLaMonedaDelAviso(referencia, vehiculo.Moneda, cotizaciones);
 
         return new DemandaDeVehiculoDto(
             vehiculo.Id,
@@ -481,9 +581,9 @@ public sealed class ReportesController : ControllerBase
             consultasDelVehiculo,
             UmbralesDeDemanda.ConsultasPorCienVistas(vistasDelVehiculo, consultasDelVehiculo),
             UmbralesDeDemanda.Clasificar(vistasDelVehiculo, consultasDelVehiculo, enGondola).ToString(),
-            comparable?.PrecioMediano,
-            UmbralesDeDemanda.DiferenciaContraElMercado(vehiculo.Precio, comparable?.PrecioMediano),
-            comparable?.Fecha);
+            precioDeMercado,
+            UmbralesDeDemanda.DiferenciaContraElMercado(vehiculo.Precio, precioDeMercado),
+            precioDeMercado is null ? null : referencia!.Fecha);
     }
 
     private async Task<ResumenDeDemandaDto> ResumenAsync(
