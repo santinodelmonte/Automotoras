@@ -112,6 +112,16 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     /// <summary>Vendido: sigue en la base y no sale en el sitio público.</summary>
     public int VendidoDeNorte { get; private set; }
 
+    /// <summary>
+    /// Publicado hace meses y sin un solo evento: el caso de la unidad estancada.
+    /// </summary>
+    /// <remarks>
+    /// Tiene el suyo propio y no comparte el de los demás tests porque su condición es
+    /// justamente la ausencia de eventos, y cualquier test que le agregara uno al vehículo
+    /// compartido lo cambiaría de señal.
+    /// </remarks>
+    public int OlvidadoDeNorte { get; private set; }
+
     public int VehiculoDeSur { get; private set; }
 
     /// <summary>Storage en memoria. Los tests no tocan el disco ni salen a la red.</summary>
@@ -152,6 +162,39 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
         return cliente;
     }
+
+    /// <summary>
+    /// Corre algo contra la base con la escritura cross-tenant habilitada, para sembrar
+    /// datos de un tenant puntual sin pasar por un request.
+    /// </summary>
+    /// <remarks>
+    /// La analítica se puebla así y no por el endpoint público porque los reportes miran
+    /// una ventana de días: los eventos tienen que poder tener fecha vieja, y el endpoint
+    /// —con razón— siempre los guarda con la de ahora.
+    /// </remarks>
+    public void ConLaBase(Action<AppDbContext> accion)
+    {
+        ArgumentNullException.ThrowIfNull(accion);
+
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        using var _ = db.PermitirEscrituraCrossTenant();
+
+        accion(db);
+        db.SaveChanges();
+    }
+
+    /// <summary>Un evento ya ocurrido, con su fecha.</summary>
+    public static Evento Evento(int tenantId, int? vehiculoId, TipoEvento tipo, DateTime cuando, string? sesion = null)
+        => new()
+        {
+            TenantId = tenantId,
+            VehiculoId = vehiculoId,
+            Tipo = tipo,
+            SessionId = sesion,
+            CreatedAt = cuando,
+        };
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -256,16 +299,22 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         var disponible = NuevoVehiculo(norteId, modelo.Id, 2019, 15_000m, EstadoVehiculo.Disponible);
         var vendido = NuevoVehiculo(norteId, modelo.Id, 2016, 9_500m, EstadoVehiculo.Vendido);
         var deSur = NuevoVehiculo(surId, modelo.Id, 2021, 22_000m, EstadoVehiculo.Disponible);
+        var olvidado = NuevoVehiculo(norteId, modelo.Id, 2013, 6_500m, EstadoVehiculo.Disponible);
+
+        // Relativa al reloj y no una fecha fija: lo que este vehículo representa es
+        // "hace meses que está", y una constante deja de significar eso con el tiempo.
+        olvidado.FechaPublicacion = DateTime.UtcNow.AddDays(-150);
 
         vendido.FechaVenta = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
         vendido.PrecioVenta = 9_000m;
 
-        db.Vehiculos.AddRange(disponible, vendido, deSur);
+        db.Vehiculos.AddRange(disponible, vendido, deSur, olvidado);
         db.SaveChanges();
 
         VehiculoDeNorte = disponible.Id;
         VendidoDeNorte = vendido.Id;
         VehiculoDeSur = deSur.Id;
+        OlvidadoDeNorte = olvidado.Id;
 
         db.VehiculoFotos.Add(new VehiculoFoto
         {

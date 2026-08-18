@@ -1,3 +1,4 @@
+using AutomotoraSaaS.Core.Analitica;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Dashboard;
 using AutomotoraSaaS.Core.Enums;
@@ -31,9 +32,6 @@ public sealed class DashboardController : ControllerBase
     private const int DiasDeVentana = 30;
     private const int VehiculosEnElTop = 5;
 
-    private static readonly TipoEvento[] EventosDeConsulta =
-        [TipoEvento.ClickWhatsapp, TipoEvento.ClickTelefono];
-
     private readonly AppDbContext _db;
     private readonly TimeProvider _reloj;
 
@@ -61,7 +59,7 @@ public sealed class DashboardController : ControllerBase
             .ConfigureAwait(false);
 
         var consultas = await _db.Eventos
-            .CountAsync(e => EventosDeConsulta.Contains(e.Tipo) && e.CreatedAt >= desde, cancellationToken)
+            .CountAsync(e => EventosDeContacto.Tipos.Contains(e.Tipo) && e.CreatedAt >= desde, cancellationToken)
             .ConfigureAwait(false);
 
         var sinResultado = await _db.Busquedas
@@ -121,7 +119,7 @@ public sealed class DashboardController : ControllerBase
         var ids = vistasPorVehiculo.Select(x => x.VehiculoId).ToList();
 
         var consultasPorVehiculo = await _db.Eventos
-            .Where(e => EventosDeConsulta.Contains(e.Tipo)
+            .Where(e => EventosDeContacto.Tipos.Contains(e.Tipo)
                         && e.CreatedAt >= desde
                         && e.VehiculoId != null
                         && ids.Contains(e.VehiculoId.Value))

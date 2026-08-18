@@ -77,7 +77,7 @@ public static class SeedDeVehiculos
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         AgregarEventos(db, vehiculos, ahora, azar);
-        AgregarBusquedas(db, tenants, ahora, azar);
+        AgregarBusquedas(db, tenants, modelos, ahora, azar);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -191,7 +191,12 @@ public static class SeedDeVehiculos
     /// son la señal más valiosa del producto: dicen qué le están pidiendo a la automotora
     /// que no tiene en stock.
     /// </summary>
-    private static void AgregarBusquedas(AppDbContext db, IReadOnlyList<int> tenants, DateTime ahora, Random azar)
+    private static void AgregarBusquedas(
+        AppDbContext db,
+        IReadOnlyList<int> tenants,
+        IReadOnlyList<int> modelos,
+        DateTime ahora,
+        Random azar)
     {
         foreach (var tenantId in tenants)
         {
@@ -201,7 +206,7 @@ public static class SeedDeVehiculos
             {
                 var cuando = ahora.AddDays(-azar.Next(0, DiasDeHistoria)).AddHours(azar.Next(8, 23));
                 var sinResultado = azar.Next(4) == 0;
-                var filtros = FiltrosSinteticos(azar);
+                var filtros = FiltrosSinteticos(modelos, azar);
                 var sesion = Sesion(azar);
 
                 db.Busquedas.Add(new Busqueda
@@ -238,18 +243,43 @@ public static class SeedDeVehiculos
         UserAgent = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36",
     };
 
-    private static string FiltrosSinteticos(Random azar)
+    /// <summary>
+    /// Los filtros de una búsqueda inventada, con la misma forma con la que los guarda el
+    /// sitio público.
+    /// </summary>
+    /// <remarks>
+    /// Con las opciones web —camelCase— y no con las de por defecto, porque es el mismo
+    /// JSON que después leen los reportes. Un seed que escribe las claves de otra manera
+    /// hace que los reportes se vean bien en desarrollo por motivos que no se repiten en
+    /// producción, que es la peor forma de tener datos de prueba.
+    /// <para>
+    /// Cuatro de cada diez búsquedas nombran un modelo concreto. Es lo que hace que la
+    /// demanda insatisfecha se pueda leer como "te están pidiendo este modelo" en vez de
+    /// como "alguien quería una camioneta": sin modelo, el reporte no dice qué comprar.
+    /// </para>
+    /// </remarks>
+    private static string FiltrosSinteticos(IReadOnlyList<int> modelos, Random azar)
     {
         var carroceria = Enum.GetValues<Carroceria>()[azar.Next(Enum.GetValues<Carroceria>().Length)];
+        var conModelo = azar.Next(10) < 4;
 
-        return JsonSerializer.Serialize(new
-        {
-            Carroceria = carroceria.ToString(),
-            AnioDesde = 2015 + azar.Next(0, 8),
-            Moneda = "Usd",
-            PrecioHasta = azar.Next(10, 40) * 1000,
-        });
+        return JsonSerializer.Serialize(
+            new
+            {
+                ModeloId = conModelo ? modelos[azar.Next(modelos.Count)] : (int?)null,
+                Carroceria = conModelo ? null : carroceria.ToString(),
+                AnioDesde = 2015 + azar.Next(0, 8),
+                Moneda = "Usd",
+                PrecioHasta = azar.Next(10, 40) * 1000,
+            },
+            OpcionesDeFiltros);
     }
+
+    /// <summary>Las mismas con las que el sitio público serializa los filtros.</summary>
+    private static readonly JsonSerializerOptions OpcionesDeFiltros = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
 
     private static string Sesion(Random azar) => $"seed-{azar.Next(1, 900):000}";
 
