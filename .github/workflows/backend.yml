@@ -12,6 +12,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # Las migraciones se aplican contra un MySQL de verdad. Los tests corren sobre SQLite
+    # creado desde el modelo, asi que nunca ejecutan una migracion: sin esto, una migracion
+    # rota pasa verde hasta que alguien despliega.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: automotora_saas
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
     steps:
       - uses: actions/checkout@v4
 
@@ -39,5 +56,14 @@ jobs:
       - name: Modelo y migraciones sincronizados
         run: >
           dotnet dotnet-ef migrations has-pending-model-changes
+          --project backend/Infrastructure
+          --startup-project backend/Infrastructure
+
+      - name: Aplicar migraciones contra MySQL
+        env:
+          ConnectionStrings__Default: >-
+            Server=127.0.0.1;Port=3306;Database=automotora_saas;User Id=root;Password=root;
+        run: >
+          dotnet dotnet-ef database update
           --project backend/Infrastructure
           --startup-project backend/Infrastructure
