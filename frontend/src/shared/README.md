@@ -10,6 +10,12 @@ tipos del dominio, componentes y hooks reutilizables.
   reuso, cerrando todas las sesiones del usuario.
 - `api/sesionGuardada.ts` — persistencia de la sesión entre recargas.
 - `api/types.ts` — tipos de las respuestas de la API.
+- `analitica/sesion.ts` — id de la visita, para agrupar la actividad de una persona sin
+  saber quién es. Lo genera el cliente y no una cookie del servidor: el sitio y la API
+  viven en orígenes distintos, así que una cookie del servidor sería de tercera parte y
+  los navegadores la bloquean.
+- `ui/formato.ts` — precios, kilómetros y fechas en formato uruguayo.
+- `ui/Estado.tsx` — pantallas de carga, vacío y error.
 - `auth/useSesion.ts` — la sesión en curso, suscripta al store del cliente, para que una
   renovación en segundo plano repinte la UI sola.
 - `auth/RutaProtegida.tsx` — corta el paso por rol en el cliente. No es la seguridad: la

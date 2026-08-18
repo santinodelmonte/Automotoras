@@ -79,6 +79,61 @@ public sealed class PublicVehiculosController : ControllerBase
             total));
     }
 
+    /// <summary>
+    /// Las opciones de filtrado que tienen sentido en este sitio: solo lo que hay
+    /// publicado.
+    /// </summary>
+    [HttpGet("filtros")]
+    [ProducesResponseType(typeof(FiltrosDisponiblesDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<FiltrosDisponiblesDto>> Filtros(CancellationToken cancellationToken)
+    {
+        var stock = await _db.Vehiculos
+            .Where(v => v.Estado == EstadoVehiculo.Disponible)
+            .Select(v => new
+            {
+                MarcaId = v.Modelo!.MarcaId,
+                Marca = v.Modelo!.Marca!.Nombre,
+                v.ModeloId,
+                Modelo = v.Modelo!.Nombre,
+                v.Modelo!.Carroceria,
+                v.Combustible,
+                v.Transmision,
+                v.Moneda,
+                v.Anio,
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (stock.Count == 0)
+        {
+            return Ok(new FiltrosDisponiblesDto([], [], [], [], [], null, null));
+        }
+
+        var marcas = stock
+            .GroupBy(v => new { v.MarcaId, v.Marca })
+            .OrderBy(g => g.Key.Marca, StringComparer.CurrentCulture)
+            .Select(g => new MarcaConStockDto(
+                g.Key.MarcaId,
+                g.Key.Marca,
+                g.GroupBy(v => new { v.ModeloId, v.Modelo })
+                    .OrderBy(m => m.Key.Modelo, StringComparer.CurrentCulture)
+                    .Select(m => new ModeloConStockDto(m.Key.ModeloId, m.Key.Modelo))
+                    .ToList()))
+            .ToList();
+
+        return Ok(new FiltrosDisponiblesDto(
+            marcas,
+            Distintos(stock.Select(v => v.Carroceria.ToString())),
+            Distintos(stock.Select(v => v.Combustible.ToString())),
+            Distintos(stock.Select(v => v.Transmision.ToString())),
+            Distintos(stock.Select(v => v.Moneda.ToString())),
+            stock.Min(v => v.Anio),
+            stock.Max(v => v.Anio)));
+    }
+
+    private static IReadOnlyList<string> Distintos(IEnumerable<string> valores)
+        => valores.Distinct(StringComparer.Ordinal).OrderBy(v => v, StringComparer.Ordinal).ToList();
+
     [HttpGet("vehiculos")]
     [ProducesResponseType(typeof(PaginaDe<VehiculoPublicoResumenDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

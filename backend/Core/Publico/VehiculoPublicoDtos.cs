@@ -63,3 +63,31 @@ public sealed record HomePublicaDto(
     IReadOnlyList<VehiculoPublicoResumenDto> Destacados,
     IReadOnlyList<VehiculoPublicoResumenDto> Recientes,
     int TotalDisponibles);
+
+/// <summary>Un modelo con stock disponible en esta automotora.</summary>
+public sealed record ModeloConStockDto(int Id, string Nombre);
+
+/// <summary>Una marca con stock, y los modelos suyos que hay publicados.</summary>
+public sealed record MarcaConStockDto(int Id, string Nombre, IReadOnlyList<ModeloConStockDto> Modelos);
+
+/// <summary>
+/// Lo que se puede filtrar en este sitio, ahora mismo.
+/// </summary>
+/// <remarks>
+/// No es el catálogo global: son las marcas, modelos y características que esta automotora
+/// tiene efectivamente publicadas. Ofrecerle al comprador un filtro que siempre devuelve
+/// cero es hacerle perder el tiempo, y además expondría el catálogo entero del SaaS a
+/// cualquiera que mire el sitio de un cliente.
+/// <para>
+/// El rango de años sirve para los <c>placeholder</c> de los campos: sugerir "desde 1990"
+/// donde el más viejo es de 2015 no ayuda a nadie.
+/// </para>
+/// </remarks>
+public sealed record FiltrosDisponiblesDto(
+    IReadOnlyList<MarcaConStockDto> Marcas,
+    IReadOnlyList<string> Carrocerias,
+    IReadOnlyList<string> Combustibles,
+    IReadOnlyList<string> Transmisiones,
+    IReadOnlyList<string> Monedas,
+    int? AnioMinimo,
+    int? AnioMaximo);

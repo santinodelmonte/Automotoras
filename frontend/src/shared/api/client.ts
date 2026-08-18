@@ -1,19 +1,57 @@
 import { sesionGuardada } from './sesionGuardada'
 import type {
+  ActualizarTenantRequest,
+  CambiarEstadoRequest,
+  ConfiguracionDeTenant,
+  CrearTenantRequest,
   CrearUsuarioRequest,
+  Dashboard,
+  FiltrosDeVehiculos,
+  FiltrosDisponibles,
+  FiltrosPublicos,
+  GuardarConfiguracionRequest,
+  GuardarVehiculoRequest,
   HealthStatus,
+  HomePublica,
   LoginRequest,
+  Marca,
+  Modelo,
+  OpcionesDeCatalogo,
+  PaginaDe,
   ProblemDetails,
+  RegistrarEventoRequest,
+  ResolverSolicitudRequest,
   Sesion,
+  SolicitudModelo,
+  TenantAdmin,
   TenantPublico,
   Usuario,
+  Vehiculo,
+  VehiculoFoto,
+  VehiculoPublico,
+  VehiculoPublicoResumen,
+  VehiculoResumen,
+  VersionVehiculo,
 } from './types'
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL
+/**
+ * Base URL de la API. Sin variable definida, se asume el mismo origen que el sitio.
+ *
+ * Antes acá había un `throw` a nivel de módulo si la variable faltaba, y era una trampa:
+ * el bundler reemplaza `import.meta.env` en tiempo de compilación, así que sin `.env` la
+ * condición quedaba siempre verdadera y el minificador eliminaba la aplicación entera
+ * como código inalcanzable. El build seguía diciendo "ok" y el resultado era una pantalla
+ * en blanco.
+ *
+ * El mismo origen es además el default correcto en producción: cada automotora entra por
+ * su dominio y el servidor web enruta `/api` hacia el backend.
+ */
+const baseUrl: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
-if (!baseUrl) {
-  throw new Error(
-    'Falta VITE_API_BASE_URL. Copiá .env.example a .env y completá la URL de la API.',
+if (!import.meta.env.VITE_API_BASE_URL && import.meta.env.DEV) {
+  console.warn(
+    'VITE_API_BASE_URL no está definida: se usa el mismo origen. En desarrollo, copiá ' +
+      '.env.example a .env y apuntá a http://localhost:5080.',
   )
 }
 
@@ -40,9 +78,26 @@ type Metodo = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 interface RequestOptions {
   method?: Metodo
   body?: unknown
+  /** Cuerpo multipart. Excluyente con `body`: el navegador arma el Content-Type. */
+  form?: FormData
   signal?: AbortSignal
   /** Los endpoints de sesión no se reintentan: son los que producen el token. */
   sinReintento?: boolean
+}
+
+/** Arma un query string salteando los valores vacíos, que ensuciarían la URL. */
+function query(parametros: object | undefined): string {
+  if (!parametros) return ''
+
+  const partes = new URLSearchParams()
+
+  for (const [clave, valor] of Object.entries(parametros)) {
+    if (valor === undefined || valor === null || valor === '') continue
+    partes.set(clave, String(valor))
+  }
+
+  const texto = partes.toString()
+  return texto ? `?${texto}` : ''
 }
 
 /** Se avisa cuando la sesión se cae, para que la UI mande al login. */
@@ -83,9 +138,12 @@ export const sesion = {
 }
 
 async function enviar(path: string, options: RequestOptions, token: string | null) {
-  const { method = 'GET', body, signal } = options
+  const { method = 'GET', body, form, signal } = options
 
   const headers: Record<string, string> = {}
+
+  // Con FormData no se toca el Content-Type: el navegador tiene que ponerlo él para
+  // incluir el boundary del multipart.
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers.Authorization = `Bearer ${token}`
 
@@ -93,7 +151,7 @@ async function enviar(path: string, options: RequestOptions, token: string | nul
     method,
     signal,
     headers: Object.keys(headers).length === 0 ? undefined : headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
   })
 }
 
@@ -199,8 +257,156 @@ export const api = {
       request<Usuario>(`/api/users/${id}`, { method: 'PUT', body: cambios }),
   },
 
+  catalogo: {
+    marcas: (signal?: AbortSignal) => request<Marca[]>('/api/catalogo/marcas', { signal }),
+
+    modelos: (marcaId: number, signal?: AbortSignal) =>
+      request<Modelo[]>(`/api/catalogo/marcas/${marcaId}/modelos`, { signal }),
+
+    versiones: (modeloId: number, signal?: AbortSignal) =>
+      request<VersionVehiculo[]>(`/api/catalogo/modelos/${modeloId}/versiones`, { signal }),
+
+    opciones: (signal?: AbortSignal) =>
+      request<OpcionesDeCatalogo>('/api/catalogo/opciones', { signal }),
+
+    solicitudes: (signal?: AbortSignal) =>
+      request<SolicitudModelo[]>('/api/catalogo/solicitudes-modelo', { signal }),
+
+    solicitar: (pedido: { marcaId: number; nombreModelo: string; carroceria: string }) =>
+      request<SolicitudModelo>('/api/catalogo/solicitudes-modelo', { method: 'POST', body: pedido }),
+  },
+
+  vehiculos: {
+    listar: (filtros: FiltrosDeVehiculos, signal?: AbortSignal) =>
+      request<PaginaDe<VehiculoResumen>>(`/api/vehiculos${query(filtros)}`, { signal }),
+
+    obtener: (id: number, signal?: AbortSignal) =>
+      request<Vehiculo>(`/api/vehiculos/${id}`, { signal }),
+
+    crear: (vehiculo: GuardarVehiculoRequest) =>
+      request<Vehiculo>('/api/vehiculos', { method: 'POST', body: vehiculo }),
+
+    actualizar: (id: number, vehiculo: GuardarVehiculoRequest) =>
+      request<Vehiculo>(`/api/vehiculos/${id}`, { method: 'PUT', body: vehiculo }),
+
+    cambiarEstado: (id: number, cambio: CambiarEstadoRequest) =>
+      request<Vehiculo>(`/api/vehiculos/${id}/estado`, { method: 'POST', body: cambio }),
+
+    borrar: (id: number) => request<void>(`/api/vehiculos/${id}`, { method: 'DELETE' }),
+
+    fotos: {
+      subir: (vehiculoId: number, imagen: Blob, nombre: string) => {
+        const form = new FormData()
+        form.append('imagen', imagen, nombre)
+
+        return request<VehiculoFoto>(`/api/vehiculos/${vehiculoId}/fotos`, { method: 'POST', form })
+      },
+
+      borrar: (vehiculoId: number, fotoId: number) =>
+        request<void>(`/api/vehiculos/${vehiculoId}/fotos/${fotoId}`, { method: 'DELETE' }),
+
+      reordenar: (vehiculoId: number, fotoIds: number[]) =>
+        request<VehiculoFoto[]>(`/api/vehiculos/${vehiculoId}/fotos/orden`, {
+          method: 'PUT',
+          body: { fotoIds },
+        }),
+
+      portada: (vehiculoId: number, fotoId: number) =>
+        request<VehiculoFoto[]>(`/api/vehiculos/${vehiculoId}/fotos/${fotoId}/portada`, {
+          method: 'POST',
+        }),
+    },
+  },
+
+  tenant: {
+    obtener: (signal?: AbortSignal) =>
+      request<ConfiguracionDeTenant>('/api/tenant', { signal }),
+
+    guardar: (configuracion: GuardarConfiguracionRequest) =>
+      request<ConfiguracionDeTenant>('/api/tenant', { method: 'PUT', body: configuracion }),
+
+    logo: (imagen: Blob, nombre: string) => {
+      const form = new FormData()
+      form.append('imagen', imagen, nombre)
+
+      return request<ConfiguracionDeTenant>('/api/tenant/logo', { method: 'POST', form })
+    },
+  },
+
+  dashboard: (signal?: AbortSignal) => request<Dashboard>('/api/dashboard', { signal }),
+
+  admin: {
+    tenants: (signal?: AbortSignal) => request<TenantAdmin[]>('/api/admin/tenants', { signal }),
+
+    crearTenant: (nuevo: CrearTenantRequest) =>
+      request<TenantAdmin>('/api/admin/tenants', { method: 'POST', body: nuevo }),
+
+    actualizarTenant: (id: number, cambios: ActualizarTenantRequest) =>
+      request<TenantAdmin>(`/api/admin/tenants/${id}`, { method: 'PUT', body: cambios }),
+
+    marcas: (signal?: AbortSignal) => request<Marca[]>('/api/admin/catalogo/marcas', { signal }),
+
+    crearMarca: (marca: { nombre: string; activo: boolean }) =>
+      request<Marca>('/api/admin/catalogo/marcas', { method: 'POST', body: marca }),
+
+    actualizarMarca: (id: number, marca: { nombre: string; activo: boolean }) =>
+      request<Marca>(`/api/admin/catalogo/marcas/${id}`, { method: 'PUT', body: marca }),
+
+    modelos: (marcaId: number | undefined, signal?: AbortSignal) =>
+      request<Modelo[]>(`/api/admin/catalogo/modelos${query({ marcaId })}`, { signal }),
+
+    crearModelo: (modelo: { marcaId: number; nombre: string; carroceria: string; activo: boolean }) =>
+      request<Modelo>('/api/admin/catalogo/modelos', { method: 'POST', body: modelo }),
+
+    actualizarModelo: (
+      id: number,
+      modelo: { marcaId: number; nombre: string; carroceria: string; activo: boolean },
+    ) => request<Modelo>(`/api/admin/catalogo/modelos/${id}`, { method: 'PUT', body: modelo }),
+
+    versiones: (modeloId: number | undefined, signal?: AbortSignal) =>
+      request<VersionVehiculo[]>(`/api/admin/catalogo/versiones${query({ modeloId })}`, { signal }),
+
+    crearVersion: (version: { modeloId: number; nombre: string; activo: boolean }) =>
+      request<VersionVehiculo>('/api/admin/catalogo/versiones', { method: 'POST', body: version }),
+
+    solicitudes: (estado: string | undefined, signal?: AbortSignal) =>
+      request<SolicitudModelo[]>(`/api/admin/solicitudes-modelo${query({ estado })}`, { signal }),
+
+    resolverSolicitud: (id: number, resolucion: ResolverSolicitudRequest) =>
+      request<SolicitudModelo>(`/api/admin/solicitudes-modelo/${id}/resolver`, {
+        method: 'POST',
+        body: resolucion,
+      }),
+  },
+
   publico: {
     tenant: (slug: string | null, signal?: AbortSignal) =>
       request<TenantPublico>(rutaPublica(slug, '/api/public/tenant'), { signal }),
+
+    home: (slug: string | null, signal?: AbortSignal) =>
+      request<HomePublica>(rutaPublica(slug, '/api/public/home'), { signal }),
+
+    filtros: (slug: string | null, signal?: AbortSignal) =>
+      request<FiltrosDisponibles>(rutaPublica(slug, '/api/public/filtros'), { signal }),
+
+    vehiculos: (slug: string | null, filtros: FiltrosPublicos, signal?: AbortSignal) =>
+      request<PaginaDe<VehiculoPublicoResumen>>(
+        rutaPublica(slug, `/api/public/vehiculos${query(filtros)}`),
+        { signal },
+      ),
+
+    vehiculo: (slug: string | null, id: number, signal?: AbortSignal) =>
+      request<VehiculoPublico>(rutaPublica(slug, `/api/public/vehiculos/${id}`), { signal }),
+
+    /**
+     * Registra un evento. No se espera ni se propaga el error: si la métrica no se pudo
+     * guardar, el visitante no tiene por qué enterarse ni por qué frenar su navegación.
+     */
+    evento: (slug: string | null, evento: RegistrarEventoRequest) =>
+      request<void>(rutaPublica(slug, '/api/public/events'), {
+        method: 'POST',
+        body: evento,
+        sinReintento: true,
+      }).catch(() => undefined),
   },
 }
