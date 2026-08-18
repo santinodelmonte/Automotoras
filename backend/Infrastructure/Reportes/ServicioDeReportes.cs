@@ -174,11 +174,16 @@ public sealed class ServicioDeReportes : IServicioDeReportes
                 var ratio = mirado == 0 ? 0 : Math.Round(preguntado * 100d / mirado, 1);
                 var senal = Clasificar(mirado, ratio, enGondola);
 
-                var promedioDeMercado = mercado.GetValueOrDefault(
-                    (vehiculo.ModeloId, vehiculo.Anio, vehiculo.Moneda));
+                // TryGetValue y no GetValueOrDefault: sobre un diccionario de decimal, el
+                // segundo devuelve cero cuando falta la clave, y un cero acá haría que toda
+                // unidad sin relevar apareciera infinitamente cara. Falta es null.
+                var promedioDeMercado =
+                    mercado.TryGetValue((vehiculo.ModeloId, vehiculo.Anio, vehiculo.Moneda), out var relevado)
+                        ? relevado
+                        : (decimal?)null;
 
-                var diferencia = promedioDeMercado is > 0
-                    ? Math.Round((double)((vehiculo.Precio - promedioDeMercado.Value) / promedioDeMercado.Value) * 100, 1)
+                var diferencia = promedioDeMercado is { } referencia && referencia > 0
+                    ? Math.Round((double)((vehiculo.Precio - referencia) / referencia) * 100, 1)
                     : (double?)null;
 
                 return new VehiculoEnGondolaDto(
