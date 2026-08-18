@@ -226,6 +226,7 @@ public sealed class DominiosTests : IClassFixture<FabricaDeApi>
 
         Assert.Equal(HttpStatusCode.NotFound, verificar.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, borrar.StatusCode);
+    }
 }
 
 /// <summary>

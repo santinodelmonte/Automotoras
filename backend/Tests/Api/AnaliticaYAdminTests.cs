@@ -194,7 +194,7 @@ public sealed class AnaliticaYAdminTests : IClassFixture<FabricaDeApi>
         using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailSuperAdmin);
 
         var respuesta = await cliente.PostAsJsonAsync("/api/admin/tenants", new CrearTenantRequest(
-            "este", "Automotora Este", null, "owner@este.uy", "Owner Este", "Clave-nueva-9"));
+            "este", "Automotora Este", "owner@este.uy", "Owner Este", "Clave-nueva-9"));
 
         Assert.Equal(HttpStatusCode.Created, respuesta.StatusCode);
 
@@ -211,7 +211,7 @@ public sealed class AnaliticaYAdminTests : IClassFixture<FabricaDeApi>
         using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailSuperAdmin);
 
         var respuesta = await cliente.PostAsJsonAsync("/api/admin/tenants", new CrearTenantRequest(
-            "norte", "Otra Norte", null, "otro@norte.uy", "Otro", "Clave-nueva-9"));
+            "norte", "Otra Norte", "otro@norte.uy", "Otro", "Clave-nueva-9"));
 
         Assert.Equal(HttpStatusCode.Conflict, respuesta.StatusCode);
     }
