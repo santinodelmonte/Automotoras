@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '@shared/api/client'
+import { ComparativoDeMercado } from '@admin/ComparativoDeMercado'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { entero, fecha, precio } from '@shared/ui/formato'
-import type { ReporteDeDemanda, SenalDeDemanda, SugerenciaDeCompra } from '@shared/api/types'
+import type {
+  Benchmark,
+  ReporteDeDemanda,
+  SenalDeDemanda,
+  SugerenciaDeCompra,
+} from '@shared/api/types'
 
 const VENTANAS = [30, 60, 90, 180]
 
@@ -25,6 +31,7 @@ export function ReportesPage() {
   const [dias, setDias] = useState(30)
   const [reporte, setReporte] = useState<ReporteDeDemanda | null>(null)
   const [sugerencias, setSugerencias] = useState<SugerenciaDeCompra[] | null>(null)
+  const [benchmark, setBenchmark] = useState<Benchmark | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -49,6 +56,20 @@ export function ReportesPage() {
     api.reportes
       .sugerencias(dias, controlador.signal)
       .then(setSugerencias)
+      .catch(() => undefined)
+
+    return () => controlador.abort()
+  }, [dias])
+
+  // El benchmark se pide aparte y su error se traga: depende de que haya mercado relevado,
+  // y quedarse sin comparación no es motivo para tumbar el reporte propio.
+  useEffect(() => {
+    const controlador = new AbortController()
+    setBenchmark(null)
+
+    api.reportes
+      .benchmark(dias, controlador.signal)
+      .then(setBenchmark)
       .catch(() => undefined)
 
     return () => controlador.abort()
@@ -162,6 +183,8 @@ export function ReportesPage() {
             )}
           </section>
 
+          {benchmark && <ContraElMercado benchmark={benchmark} />}
+
           <section>
             <h2 className="mb-1 font-semibold">Tu stock publicado</h2>
             <p className="mb-4 text-sm text-slate-500">
@@ -245,6 +268,57 @@ export function ReportesPage() {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * Cómo le va a esta automotora contra el resto, sin que ninguna otra sea identificable.
+ *
+ * Si no hay ninguna comparación no se dibuja nada. La sección vacía invitaría a leer el
+ * silencio como un mal resultado, cuando lo único que dice es que todavía no hay suficiente
+ * mercado relevado.
+ */
+function ContraElMercado({ benchmark }: { benchmark: Benchmark }) {
+  const hayAlgo =
+    benchmark.consultasPorCienVistas !== null ||
+    benchmark.diasParaVenderPorCarroceria.length > 0
+
+  if (!hayAlgo) return null
+
+  return (
+    <section>
+      <h2 className="mb-1 font-semibold">Cómo te va contra el mercado</h2>
+      <p className="mb-4 text-sm text-slate-500">{benchmark.notaDePrivacidad}</p>
+
+      {benchmark.consultasPorCienVistas && (
+        <ul className="flex flex-col gap-2">
+          <ComparativoDeMercado
+            comparativo={benchmark.consultasPorCienVistas}
+            direccion="masEsMejor"
+            unidad="c/100"
+          />
+        </ul>
+      )}
+
+      {benchmark.diasParaVenderPorCarroceria.length > 0 && (
+        <>
+          <h3 className="mb-2 mt-6 text-sm font-semibold uppercase tracking-wide text-slate-400">
+            Días para vender, por carrocería
+          </h3>
+
+          <ul className="flex flex-col gap-2">
+            {benchmark.diasParaVenderPorCarroceria.map((comparativo) => (
+              <ComparativoDeMercado
+                key={comparativo.dimension}
+                comparativo={comparativo}
+                direccion="menosEsMejor"
+                unidad="días"
+              />
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   )
 }
 

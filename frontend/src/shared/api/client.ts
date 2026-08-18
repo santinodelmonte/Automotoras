@@ -1,6 +1,7 @@
 import { sesionGuardada } from './sesionGuardada'
 import type {
   ActualizarTenantRequest,
+  Benchmark,
   CambiarEstadoRequest,
   ConfiguracionDeTenant,
   CrearTenantRequest,
@@ -343,6 +344,9 @@ export const api = {
 
     sugerencias: (dias: number, signal?: AbortSignal) =>
       request<SugerenciaDeCompra[]>(`/api/reportes/sugerencias${query({ dias })}`, { signal }),
+
+    benchmark: (dias: number, signal?: AbortSignal) =>
+      request<Benchmark>(`/api/reportes/benchmark${query({ dias })}`, { signal }),
   },
 
   admin: {

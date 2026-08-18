@@ -439,6 +439,36 @@ export interface SugerenciaDeCompra {
   diasPromedioParaVender: number | null
 }
 
+/**
+ * Un indicador propio contra el mismo indicador del resto del mercado.
+ *
+ * `propio` en `null` no es cero: es que esta automotora todavía no tiene datos para
+ * calcularlo. `automotorasAportantes` dice cuánto pesa el número del mercado, y nunca
+ * incluye a la propia.
+ */
+export interface Comparativo {
+  dimension: string
+  propio: number | null
+  mercado: number
+  automotorasAportantes: number
+  registrosAportantes: number
+  /** La comparación explicada en una frase, para no dejar los dos números solos. */
+  lectura: string
+}
+
+/**
+ * Cómo le va a esta automotora contra el resto, sin que ninguna otra sea identificable.
+ *
+ * Las comparaciones que no llegan al mínimo de automotoras detrás no vienen recortadas ni
+ * en cero: no vienen. Una lista corta significa poco mercado relevado, no un mal resultado.
+ */
+export interface Benchmark {
+  diasAnalizados: number
+  diasParaVenderPorCarroceria: Comparativo[]
+  consultasPorCienVistas: Comparativo | null
+  notaDePrivacidad: string
+}
+
 export interface ReporteDeDemanda {
   diasAnalizados: number
   vistasTotales: number

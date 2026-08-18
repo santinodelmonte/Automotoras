@@ -56,8 +56,8 @@ Monorepo:
 
 > **Avance:** pasos 0 (esqueleto), 2 (modelo de datos), 3 (autenticación, roles y
 > resolución de tenant) y 4 (features de fase 1) están hechos. De la fase 2 ya está el
-> reporte de demanda, las sugerencias de compra y el precio de referencia de mercado.
-> Faltan los dominios custom automatizados y los benchmarks anonimizados cross-tenant.
+> reporte de demanda, las sugerencias de compra, el precio de referencia de mercado y los
+> benchmarks anonimizados cross-tenant. Falta el dominio custom automatizado.
 >
 > El backend se verifica en GitHub Actions: cada push compila en Release y corre los
 > tests. Se agregó porque el código se escribió en un entorno sin SDK de .NET, y sin eso
@@ -274,6 +274,13 @@ hasheada, no en claro.
 benchmarks comparativos que se expongan a futuro deben ser agregados y anonimizados, con
 un mínimo de N registros para publicarse.
 
+> Implementado en `ServicioDeBenchmarks`, que es el único lugar del lado de tenant que lee
+> datos de otras automotoras. Un agregado se publica solo con al menos tres automotoras y
+> diez registros detrás, contados sin incluir a quien pregunta —con dos, quien pregunta
+> conoce la suya y despeja la otra restando—. Lo que no llega al umbral no se devuelve
+> recortado ni en cero: no se devuelve, porque decir "sin datos suficientes" por carrocería
+> ya diría algo sobre quién vendió qué.
+
 ## Alcance por fases
 
 ### Fase 1 — construir ahora ✅ hecha
@@ -318,7 +325,9 @@ un mínimo de N registros para publicarse.
 - Precio de referencia de mercado vía API pública de MercadoLibre, con snapshots diarios en
   tabla propia ✅ hecho, con el relevamiento del lado del cron y no del proceso web
 - Custom domains automatizados
-- Benchmarks anonimizados cross-tenant
+- Benchmarks anonimizados cross-tenant ✅ hecho: días para vender por carrocería y
+  conversión de visitas en consultas, contra el promedio del resto. Los umbrales de
+  anonimato viven en `UmbralesDeBenchmark` y se cuentan excluyendo a quien pregunta
 
 **No implementar en fase 1:** pagos, financiación, permutas, integración con MercadoLibre,
 notificaciones por email, chat en vivo.

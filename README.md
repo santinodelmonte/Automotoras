@@ -19,7 +19,8 @@ El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está 
 > panel con ABM de vehículos y fotos, panel de SuperAdmin, tracking de eventos y jobs por
 > endpoint. De la fase 2 ya está el reporte de demanda: qué unidad se mira y no se
 > consulta, cuál lleva tiempo sin que nadie la vea, y qué le están pidiendo a la
-> automotora que no tiene en stock.
+> automotora que no tiene en stock. Y los benchmarks anonimizados, que la comparan contra
+> el resto del mercado sin que ninguna otra automotora sea identificable.
 >
 > Cada push, en GitHub Actions ([`.github/workflows`](.github/workflows)): compila en
 > Release, corre los tests, verifica que el modelo y las migraciones no se hayan desfasado,
@@ -235,6 +236,7 @@ nada de ningún tenant.
 | `GET /api/dashboard` | Owner | Stock por estado y demanda de 30 días |
 | `GET /api/reportes/demanda` | Owner | Reporte de demanda: señales por unidad y demanda insatisfecha |
 | `GET /api/reportes/sugerencias` | Owner | Qué conviene traer, cruzando demanda con rotación |
+| `GET /api/reportes/benchmark` | Owner | Cómo le va contra el resto del mercado, en agregados anonimizados |
 
 **Sitio público** — sin autenticación, con el tenant resuelto por dominio o slug
 
@@ -308,6 +310,34 @@ Los umbrales viven juntos en
 [`ReporteDeDemanda.cs`](backend/Core/Reportes/ReporteDeDemanda.cs), con nombre y
 explicación: son las perillas que hay que mover cuando haya datos reales de varias
 automotoras, y tienen que poder discutirse leyendo.
+
+## Los benchmarks contra el mercado
+
+Saber que una camioneta tarda 70 días en venderse no dice nada por sí solo. Dice algo
+cuando al lado está el número del resto: si el mercado tarda 45, hay un problema de precio;
+si tarda 80, la camioneta va bien y el problema es otro. Eso es lo que hace
+`GET /api/reportes/benchmark`: días para vender por carrocería y consultas cada cien
+visitas, propios contra el promedio del resto.
+
+**Es el único lugar del lado de tenant que lee datos de otras automotoras**, y por eso vive
+solo en [`ServicioDeBenchmarks.cs`](backend/Infrastructure/Reportes/ServicioDeBenchmarks.cs):
+la excepción a la regla de aislamiento tiene que poder auditarse leyendo un archivo corto,
+no buscándola entre trescientas líneas de otro servicio. De ahí sale un promedio y nada
+más: ninguna fila, ningún id, ningún nombre.
+
+Las reglas que la hacen aceptable, todas con test:
+
+| Regla | Por qué |
+| --- | --- |
+| Mínimo 3 automotoras detrás de cada agregado | Con dos, quien pregunta conoce la suya y despeja la otra restando |
+| Los mínimos se cuentan **sin** quien pregunta | Incluirse a uno mismo infla el número sin agregar anonimato |
+| Mínimo 10 registros | Tres ventas no son un promedio de mercado |
+| Lo que no llega al umbral no se devuelve | Publicar "sin datos suficientes" por carrocería ya diría algo sobre quién vendió qué |
+| El promedio de mercado es el promedio de los ratios de cada automotora, no el ratio de los totales | Si no, la automotora más grande decide sola el número |
+
+En el panel, una comparación que no existe simplemente no se dibuja: una sección vacía
+invita a leer el silencio como un mal resultado, cuando lo único que dice es que todavía no
+hay suficiente mercado relevado.
 
 ## Decisiones de fase 1
 
