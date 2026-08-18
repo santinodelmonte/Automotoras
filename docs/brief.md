@@ -56,8 +56,8 @@ Monorepo:
 
 > **Avance:** pasos 0 (esqueleto), 2 (modelo de datos), 3 (autenticación, roles y
 > resolución de tenant) y 4 (features de fase 1) están hechos. De la fase 2 ya está el
-> reporte de demanda y las sugerencias de compra. Faltan el precio de referencia vía
-> MercadoLibre, los dominios custom automatizados y los benchmarks anonimizados.
+> reporte de demanda, las sugerencias de compra y el precio de referencia de mercado.
+> Faltan los dominios custom automatizados y los benchmarks anonimizados cross-tenant.
 >
 > El backend se verifica en GitHub Actions: cada push compila en Release y corre los
 > tests. Se agregó porque el código se escribió en un entorno sin SDK de .NET, y sin eso
@@ -97,7 +97,9 @@ Monorepo:
 >   JavaScript necesitan prerenderizado, que no es parte de la fase 1: queda anotado.
 > - El job de cotizaciones recibe el valor en el cuerpo del request en vez de salir a
 >   buscarlo. En shared hosting IIS una llamada saliente colgada se lleva un hilo del app
->   pool que atiende a todos los tenants, y el cron externo ya tiene que existir igual.
+>   pool que atiende a todos los tenants, y el cron externo ya tiene que existir igual. Lo
+>   mismo vale para el precio de referencia de MercadoLibre, que además son cientos de
+>   consultas por corrida y no una.
 
 ## Paso 0 — Esqueleto ejecutable ✅ hecho
 
@@ -314,7 +316,7 @@ un mínimo de N registros para publicarse.
   rotación histórica de la propia automotora: la demanda dice qué quieren y la rotación
   dice si conviene
 - Precio de referencia de mercado vía API pública de MercadoLibre, con snapshots diarios en
-  tabla propia
+  tabla propia ✅ hecho, con el relevamiento del lado del cron y no del proceso web
 - Custom domains automatizados
 - Benchmarks anonimizados cross-tenant
 

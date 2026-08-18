@@ -21,8 +21,9 @@ El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está 
 > consulta, cuál lleva tiempo sin que nadie la vea, y qué le están pidiendo a la
 > automotora que no tiene en stock.
 >
-> Cada push compila la solución en Release y corre los tests en GitHub Actions
-> ([`.github/workflows`](.github/workflows)). Ahí se verifican de verdad las dos mitades.
+> Cada push, en GitHub Actions ([`.github/workflows`](.github/workflows)): compila en
+> Release, corre los tests, verifica que el modelo y las migraciones no se hayan desfasado,
+> y aplica las migraciones contra un MySQL de verdad. Ahí se verifican las dos mitades.
 
 ## Requisitos previos
 
@@ -255,6 +256,7 @@ nada de ningún tenant.
 | `/api/admin/catalogo/*` | SuperAdmin | ABM de marcas, modelos y versiones |
 | `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
 | `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
+| `POST /api/jobs/precios-referencia` | Cron externo | Precios de mercado relevados, con `X-Job-Secret` |
 
 ## El reporte de demanda
 
@@ -276,6 +278,19 @@ dueño necesita es saber qué hacer con él.
 
 **La demanda insatisfecha** son las búsquedas que no devolvieron nada, agrupadas por lo que
 se pidió. Es lo más parecido a una lista de compras escrita por los propios compradores.
+
+**El precio de mercado** entra como tercer dato. Cada unidad se compara contra el último
+relevamiento de su modelo y año en la misma moneda, y la lectura pasa de "quizás sea el
+precio" a *"está 25 % por encima del promedio de mercado"*. Se menciona solo cuando la
+brecha supera el 8 %: por debajo de eso la dispersión normal entre publicaciones ya la
+explica, y decirlo sería ruido con apariencia de dato. Sin relevamiento, el campo va en
+`null` — nulo es "no sabemos", nunca "vale cero".
+
+Los precios los releva un cron externo y los deja por `POST /api/jobs/precios-referencia`.
+El brief pedía consultar la API pública de MercadoLibre; hacer ese relevamiento desde el
+proceso web sería un problema en shared hosting IIS, donde una llamada saliente colgada se
+lleva un hilo del app pool que atiende a todos los tenants —y son cientos de consultas, no
+una—. El cron ya tiene que existir para disparar el job.
 
 **Las sugerencias de compra** cruzan las dos cosas. La demanda dice *qué quieren*; la
 rotación histórica de la propia automotora dice *si conviene*: un modelo muy buscado que
