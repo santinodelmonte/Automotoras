@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace AutomotoraSaaS.Tests.Api;
 
@@ -137,6 +138,12 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
                 ["Jobs:Secret"] = SecretoDeJobs,
                 ["Analytics:IpHashSalt"] = "sal-de-tests-estable",
             }));
+
+        // El SQL de EF por consola tapa el resultado de la corrida: una suite con dos
+        // fallas deja miles de líneas de SELECT entre el error y el final del log, y en CI
+        // eso es la diferencia entre ver qué se rompió y no verlo.
+        builder.ConfigureLogging(logging =>
+            logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning));
 
         builder.ConfigureServices(servicios =>
         {

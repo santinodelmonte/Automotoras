@@ -115,6 +115,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Evento>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Busqueda>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<SolicitudModelo>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<DominioDeTenant>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
 
         // Las fotos no tienen tenant_id propio: pertenecen al tenant de su vehículo.
         modelBuilder.Entity<VehiculoFoto>()
