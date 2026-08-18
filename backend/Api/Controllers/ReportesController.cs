@@ -29,10 +29,12 @@ public sealed class ReportesController : ControllerBase
     private const int DiasMaximos = 365;
 
     private readonly IServicioDeReportes _reportes;
+    private readonly IServicioDeBenchmarks _benchmarks;
 
-    public ReportesController(IServicioDeReportes reportes)
+    public ReportesController(IServicioDeReportes reportes, IServicioDeBenchmarks benchmarks)
     {
         _reportes = reportes;
+        _benchmarks = benchmarks;
     }
 
     /// <param name="dias">Ventana de análisis. Por defecto 30, tope un año.</param>
@@ -53,6 +55,22 @@ public sealed class ReportesController : ControllerBase
         [FromQuery] int dias,
         CancellationToken cancellationToken)
         => Ok(await _reportes.SugerenciasDeCompraAsync(Ventana(dias), cancellationToken).ConfigureAwait(false));
+
+    /// <summary>
+    /// Cómo le va a esta automotora comparada con el resto, sin que ninguna otra sea
+    /// identificable.
+    /// </summary>
+    /// <remarks>
+    /// Es el único endpoint del panel que se apoya en datos de otras automotoras, y solo
+    /// devuelve promedios con suficientes automotoras detrás. Las reglas están en
+    /// <c>ServicioDeBenchmarks</c>, en su propio archivo, para poder auditarse solas.
+    /// </remarks>
+    [HttpGet("benchmark")]
+    [ProducesResponseType(typeof(BenchmarkDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<BenchmarkDto>> Benchmark(
+        [FromQuery] int dias,
+        CancellationToken cancellationToken)
+        => Ok(await _benchmarks.CompararAsync(Ventana(dias), cancellationToken).ConfigureAwait(false));
 
     private static int Ventana(int dias)
         => Math.Clamp(dias <= 0 ? DiasPorDefecto : dias, 1, DiasMaximos);

@@ -55,6 +55,10 @@ public static class DependencyInjection
         // que garantiza que solo vean la automotora del token.
         services.AddScoped<IServicioDeReportes, ServicioDeReportes>();
 
+        // Los benchmarks leen a través de la frontera entre automotoras. Van aparte, y su
+        // implementación vive en su propio archivo, para que la excepción se audite sola.
+        services.AddScoped<IServicioDeBenchmarks, ServicioDeBenchmarks>();
+
         // Hashea las IPs de los eventos. Sin estado y con la sal ya materializada.
         services.AddSingleton<HasheadorDeIp>();
 
