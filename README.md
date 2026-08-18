@@ -15,11 +15,13 @@ juntos y por eso el tracking de eventos se instrumenta desde el primer día.
 El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está en
 [docs/brief.md](docs/brief.md).
 
-> **Estado actual: fase 1 completa.** Sitio público por automotora (home, listado con
-> filtros y ficha con WhatsApp), panel con ABM de vehículos, fotos, cambio de estado,
-> usuarios, configuración y tablero, panel de SuperAdmin (automotoras, catálogo y
-> aprobación de modelos), tracking de eventos y jobs por endpoint. Lo que sigue es la
-> fase 2: los reportes de demanda que estos datos ya están alimentando.
+> **Estado actual: fase 2 completa, salvo los dominios propios automatizados.** Sobre la
+> fase 1 —sitio público por automotora, panel con ABM de vehículos y tablero, panel de
+> SuperAdmin, tracking de eventos y jobs por endpoint— ahora están los reportes de
+> demanda: qué se mira y no se consulta, qué se busca y no está, qué conviene comprar,
+> precio de referencia de mercado y comparación anonimizada contra el resto de las
+> automotoras. Lo único de la fase 2 que no está es la automatización de dominios propios;
+> el porqué está en [docs/brief.md](docs/brief.md).
 
 ## Requisitos previos
 
@@ -286,6 +288,39 @@ resultados. Las que devuelven cero dejan además su propio evento: son la señal
 del producto, porque dicen qué le están pidiendo a la automotora que no tiene en stock. Un
 listado sin filtros no se registra: sería ruido que después hay que descartar en cada
 reporte.
+
+## Decisiones de fase 2
+
+**La señal de cada unidad se calcula en el servidor.** "Precio alto", "sin visibilidad" y
+"estancado" son reglas de negocio con umbrales, declarados todos juntos en
+[`UmbralesDeDemanda`](backend/Core/Reportes/ReporteDtos.cs). El panel las pinta, no las
+decide: duplicar los umbrales en el cliente es garantizar que un día las dos pantallas
+digan cosas distintas del mismo vehículo.
+
+**Las búsquedas vacías se cuentan por visita, no por búsqueda.** Veinte búsquedas de una
+sola persona indecisa no son demanda; veinte de veinte personas sí. Y hacen falta al menos
+tres visitas distintas para que algo se convierta en una sugerencia de compra: con una
+sugerencia por cada curioso, la pantalla es ruido y la primera buena se pierde en el medio.
+
+**Una sugerencia cambia según el patio.** La misma búsqueda vacía significa "comprá" si no
+hay una sola unidad de eso publicada, y "revisá precio, año o fotos" si hay tres. Sugerir
+comprar cuando el stock ya existe es la forma más cara de equivocarse.
+
+**El precio de mercado no lo sale a buscar la API.** Un barrido de precios son cientos de
+llamadas salientes, y en shared hosting IIS cada una que se cuelga se lleva un hilo del app
+pool que atiende a todos los tenants. El script vive en
+[`tools/precios-de-mercado.mjs`](tools/precios-de-mercado.mjs), lo dispara el mismo cron que
+los otros jobs y postea el lote. Un snapshot con menos de tres publicaciones se rechaza: un
+precio de referencia equivocado es peor que ninguno, porque el que falta se nota y el que
+está mal se cree.
+
+**El benchmark no se publica con muestra chica.** Hacen falta al menos cinco automotoras
+además de la que pregunta, y lo que sale es una mediana entre automotoras — nunca un
+extremo, nunca un nombre, nunca un id. Con dos competidores en un promedio, cada uno despeja
+al otro con una resta, y en un mercado chico sabe perfectamente quiénes son. Es el único
+endpoint de tenant que lee datos de otros tenants, y está solo en
+[`BenchmarkController`](backend/Api/Controllers/BenchmarkController.cs) para que esa frontera
+se pueda auditar abriendo un archivo.
 
 ## Variables de entorno
 

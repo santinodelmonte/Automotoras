@@ -55,8 +55,8 @@ Monorepo:
 ```
 
 > **Avance:** pasos 0 (esqueleto), 2 (modelo de datos), 3 (autenticación, roles y
-> resolución de tenant) y 4 (features de fase 1) están hechos. Lo que sigue es la fase 2:
-> los reportes de demanda, que los datos que ya se están acumulando alimentan.
+> resolución de tenant), 4 (features de fase 1) y 5 (fase 2) están hechos. De la fase 2
+> falta únicamente la automatización de dominios propios.
 >
 > Desvíos respecto de este documento, decididos durante la implementación:
 > - Se agregó la tabla `solicitudes_modelo`, que no está en la lista de tablas pero es
@@ -93,6 +93,29 @@ Monorepo:
 > - El job de cotizaciones recibe el valor en el cuerpo del request en vez de salir a
 >   buscarlo. En shared hosting IIS una llamada saliente colgada se lleva un hilo del app
 >   pool que atiende a todos los tenants, y el cron externo ya tiene que existir igual.
+>
+> Desvíos de la fase 2:
+> - Se agregó la tabla `precios_de_mercado`, que el brief no enumera pero que la línea
+>   "snapshots diarios en tabla propia" pide. Es global y no por tenant: lo que se pide por
+>   un Corolla 2018 es lo mismo mirado desde cualquier automotora.
+> - La consulta a MercadoLibre no vive en la API sino en `tools/precios-de-mercado.mjs`,
+>   por el mismo motivo que el job de cotizaciones, multiplicado: un barrido de precios son
+>   cientos de llamadas salientes en vez de una.
+> - El benchmark cross-tenant obligó a la única excepción a la regla de que solo
+>   `/api/admin/*` lee cross-tenant. Está acotada a un controller propio, devuelve
+>   exclusivamente medianas entre automotoras y no publica nada por debajo de cinco
+>   automotoras aportando. Con las tres del seed de desarrollo, la pantalla dice que no hay
+>   muestra suficiente: es lo correcto, no un error.
+> - El reporte de demanda cubre lo disponible y lo reservado. Un pausado o un vendido con
+>   cero vistas no dice que nadie lo quiera, dice que nadie lo pudo ver, y mezclarlos
+>   correría todos los promedios hacia abajo.
+> - **Los dominios propios automatizados no se implementaron.** El campo `dominio_custom`
+>   existe desde la fase 1 y el sitio público ya resuelve el tenant por `Host`, así que un
+>   dominio configurado a mano funciona. Lo que falta —emitir el certificado y darlo de alta
+>   en el servidor web sin intervención— no tiene API en SmarterASP.NET: se hace desde su
+>   panel. Automatizarlo es una decisión de infraestructura (mover el hosting, o poner un
+>   proxy con TLS automático delante) antes que de código, y por eso queda anotado en vez de
+>   implementado a medias.
 
 ## Paso 0 — Esqueleto ejecutable ✅ hecho
 
@@ -300,7 +323,7 @@ un mínimo de N registros para publicarse.
 - CRUD de marcas, modelos y versiones
 - Aprobación de solicitudes de alta de modelos
 
-### Fase 2 — no construir todavía, pero dejar el modelo de datos preparado
+### Fase 2 — hecha, salvo los dominios propios automatizados
 
 - Reportes de demanda: días en góndola por vehículo, ratio consultas/vistas, vehículos con
   muchas vistas y pocas consultas (señal de precio alto), búsquedas sin resultados
