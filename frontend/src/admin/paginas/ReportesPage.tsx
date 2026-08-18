@@ -5,8 +5,10 @@ import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { Tarjeta } from '@shared/ui/Tarjeta'
 import { entero, fecha, precio } from '@shared/ui/formato'
 import type {
+  Benchmark,
   BusquedaSinResultado,
   DemandaDeVehiculo,
+  MetricaComparada,
   ReporteDeDemanda,
   SenalDeDemanda,
   SugerenciaDeCompra,
@@ -27,6 +29,7 @@ export function ReportesPage() {
   const [reporte, setReporte] = useState<ReporteDeDemanda | null>(null)
   const [sugerencias, setSugerencias] = useState<SugerenciaDeCompra[] | null>(null)
   const [busquedas, setBusquedas] = useState<BusquedaSinResultado[] | null>(null)
+  const [benchmark, setBenchmark] = useState<Benchmark | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -35,17 +38,20 @@ export function ReportesPage() {
     setReporte(null)
     setSugerencias(null)
     setBusquedas(null)
+    setBenchmark(null)
     setError(null)
 
     Promise.all([
       api.reportes.demanda(dias, controlador.signal),
       api.reportes.sugerencias(dias, controlador.signal),
       api.reportes.busquedasSinResultado(dias, controlador.signal),
+      api.reportes.benchmark(dias, controlador.signal),
     ])
-      .then(([demanda, compras, vacias]) => {
+      .then(([demanda, compras, vacias, comparacion]) => {
         setReporte(demanda)
         setSugerencias(compras)
         setBusquedas(vacias)
+        setBenchmark(comparacion)
       })
       .catch((problema: unknown) => {
         if (controlador.signal.aborted) return
@@ -93,6 +99,7 @@ export function ReportesPage() {
       {reporte && (
         <>
           <Resumen reporte={reporte} />
+          {benchmark && <Comparativa benchmark={benchmark} />}
           <Sugerencias sugerencias={sugerencias ?? []} />
           <PorVehiculo reporte={reporte} />
           <SinResultado busquedas={busquedas ?? []} />
@@ -128,6 +135,65 @@ function Resumen({ reporte }: { reporte: ReporteDeDemanda }) {
         }
       />
     </section>
+  )
+}
+
+/**
+ * Cómo le va comparada con el resto del mercado del SaaS.
+ *
+ * Cuando la muestra es chica no se muestra un número aproximado: se muestra por qué no
+ * hay. Un agregado de dos competidores no es un agregado, y el producto se apoya en que
+ * ninguna automotora pueda deducir nada de otra.
+ */
+function Comparativa({ benchmark }: { benchmark: Benchmark }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <h2 className="font-semibold">Contra el resto del mercado</h2>
+
+      {!benchmark.disponible ? (
+        <p className="mt-3 text-sm text-slate-400">{benchmark.motivo}</p>
+      ) : (
+        <>
+          <p className="mt-1 text-sm text-slate-500">
+            Mediana entre {entero(benchmark.automotorasEnLaMuestra)} automotoras, sin datos de
+            ninguna en particular.
+          </p>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <Comparacion titulo="Días en góndola" metrica={benchmark.diasEnGondola} />
+            <Comparacion titulo="Consultas cada 100 vistas" metrica={benchmark.consultasPorCienVistas} />
+            <Comparacion titulo="Días hasta vender" metrica={benchmark.diasHastaLaVenta} />
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function Comparacion({ titulo, metrica }: { titulo: string; metrica: MetricaComparada | null }) {
+  if (!metrica || metrica.propio === null || metrica.mercado === null) {
+    return (
+      <div className="rounded-lg border border-slate-200 p-4">
+        <p className="text-sm text-slate-500">{titulo}</p>
+        <p className="mt-2 text-xs text-slate-400">Sin muestra suficiente para comparar.</p>
+      </div>
+    )
+  }
+
+  const mejor = metrica.mejorCuandoBaja ? metrica.propio < metrica.mercado : metrica.propio > metrica.mercado
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-4">
+      <p className="text-sm text-slate-500">{titulo}</p>
+
+      <p className={`mt-1 text-3xl font-bold ${mejor ? 'text-emerald-700' : 'text-slate-900'}`}>
+        {metrica.propio.toLocaleString('es-UY')}
+      </p>
+
+      <p className="mt-1 text-xs text-slate-400">
+        Mercado: {metrica.mercado.toLocaleString('es-UY')}
+      </p>
+    </div>
   )
 }
 

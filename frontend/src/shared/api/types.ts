@@ -461,6 +461,24 @@ export interface SugerenciaDeCompra {
   unidadesEnStock: number
 }
 
+export interface MetricaComparada {
+  propio: number | null
+  /** Mediana entre automotoras. Nunca un extremo: un extremo es el dato de una sola con otro nombre. */
+  mercado: number | null
+  mejorCuandoBaja: boolean
+}
+
+export interface Benchmark {
+  dias: number
+  /** `false` mientras la muestra sea chica: no se publica un agregado que delate al vecino. */
+  disponible: boolean
+  motivo: string | null
+  automotorasEnLaMuestra: number
+  diasEnGondola: MetricaComparada | null
+  consultasPorCienVistas: MetricaComparada | null
+  diasHastaLaVenta: MetricaComparada | null
+}
+
 // ---------------------------------------------------------------- superadmin
 
 export interface TenantAdmin {

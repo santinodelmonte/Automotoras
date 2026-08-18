@@ -260,6 +260,7 @@ nada de ningún tenant.
 | `GET /api/reportes/demanda` | Por unidad publicada: días en góndola, vistas, consultas, ratio y señal |
 | `GET /api/reportes/busquedas-sin-resultado` | Las búsquedas vacías, agrupadas por lo que se buscaba |
 | `GET /api/reportes/sugerencias` | Qué conviene comprar, cruzando esa demanda contra el stock |
+| `GET /api/reportes/benchmark` | La automotora comparada contra la mediana del resto, anonimizada |
 
 ## Decisiones de fase 1
 
