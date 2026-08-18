@@ -1,0 +1,31 @@
+name: backend
+
+# Compila y testea el backend en cada push. Es la red que atrapa lo que el editor no ve:
+# el proyecto trata los warnings como errores, así que acá pasa o no pasa.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # La versión la fija global.json; acá se declara igual para que el runner
+          # instale el SDK correcto sin depender del que venga preinstalado.
+          dotnet-version: '8.0.x'
+
+      - name: Restaurar
+        run: dotnet restore AutomotoraSaaS.sln
+
+      - name: Compilar
+        run: dotnet build AutomotoraSaaS.sln --configuration Release --no-restore
+
+      - name: Tests
+        run: dotnet test AutomotoraSaaS.sln --configuration Release --no-build --verbosity normal
