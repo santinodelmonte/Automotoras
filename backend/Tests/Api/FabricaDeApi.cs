@@ -34,6 +34,48 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
     private readonly SqliteConnection _conexion = new("Filename=:memory:");
 
+    /// <summary>
+    /// La configuración de los tests, puesta en variables de entorno antes de que se
+    /// construya el primer host.
+    /// </summary>
+    /// <remarks>
+    /// No alcanza con <c>ConfigureAppConfiguration</c>: esos delegados corren recién
+    /// dentro de <c>builder.Build()</c>, y <c>Program</c> lee y valida el JWT antes, al
+    /// registrar la autenticación. Con la config puesta ahí, el <c>JwtBearer</c> quedaba
+    /// validando contra el issuer vacío de <c>appsettings.json</c> mientras el generador
+    /// firmaba con el de los tests, y todo request autenticado respondía 401.
+    /// <para>
+    /// Las variables de entorno sí llegan a tiempo, porque <c>Program</c> las agrega
+    /// antes de leer nada. Son del proceso entero, y está bien: todos los tests de API
+    /// quieren exactamente estos valores.
+    /// </para>
+    /// </remarks>
+    static FabricaDeApi()
+    {
+        var configuracion = new Dictionary<string, string?>
+        {
+            // Presente pero sin usar: el DbContext se reemplaza más abajo por SQLite.
+            ["ConnectionStrings__Default"] = "Server=no-se-usa;Database=no-se-usa;User Id=no;Password=no;",
+            ["Jwt__Issuer"] = "automotora-saas-tests",
+            ["Jwt__Audience"] = "automotora-saas-tests",
+            ["Jwt__Secret"] = "secreto-de-tests-largo-y-aburrido-de-sobra-32",
+            ["Jwt__AccessTokenMinutes"] = "15",
+            ["Jwt__RefreshTokenDays"] = "30",
+            ["Cors__AllowedOrigins__0"] = "http://localhost:5173",
+            ["Jobs__Secret"] = SecretoDeJobs,
+            ["Analytics__IpHashSalt"] = "sal-de-tests-estable",
+
+            // El seed de arranque no corre fuera de Development, pero si alguien hereda
+            // una variable de su shell, que no se cuele en la base de los tests.
+            ["Seed__Password"] = null,
+        };
+
+        foreach (var (clave, valor) in configuracion)
+        {
+            Environment.SetEnvironmentVariable(clave, valor);
+        }
+    }
+
     public FabricaDeApi()
     {
         // Abierta durante toda la vida de la fábrica: una base SQLite en memoria vive
@@ -118,21 +160,6 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         // Ni Development ni Production: sin Development no corre el seed de arranque, que
         // acá lo hace la fábrica.
         builder.UseEnvironment("Testing");
-
-        builder.ConfigureAppConfiguration((_, configuracion) => configuracion.AddInMemoryCollection(
-            new Dictionary<string, string?>
-            {
-                // Presente pero sin usar: el DbContext se reemplaza más abajo por SQLite.
-                ["ConnectionStrings:Default"] = "Server=no-se-usa;Database=no-se-usa;User Id=no;Password=no;",
-                ["Jwt:Issuer"] = "automotora-saas-tests",
-                ["Jwt:Audience"] = "automotora-saas-tests",
-                ["Jwt:Secret"] = "secreto-de-tests-largo-y-aburrido-de-sobra-32",
-                ["Jwt:AccessTokenMinutes"] = "15",
-                ["Jwt:RefreshTokenDays"] = "30",
-                ["Cors:AllowedOrigins:0"] = "http://localhost:5173",
-                ["Jobs:Secret"] = SecretoDeJobs,
-                ["Analytics:IpHashSalt"] = "sal-de-tests-estable",
-            }));
 
         builder.ConfigureServices(servicios =>
         {
