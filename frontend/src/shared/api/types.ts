@@ -325,13 +325,40 @@ export interface RegistrarEventoRequest {
 export interface ConfiguracionDeTenant {
   slug: string
   nombre: string
-  dominioCustom: string | null
   logoUrl: string | null
   colorPrimario: string | null
   colorSecundario: string | null
   whatsapp: string | null
   telefono: string | null
   direccion: string | null
+}
+
+export type EstadoDeDominio = 'Pendiente' | 'Verificado' | 'Caido'
+
+/** Un registro DNS que hay que crear, con el porqué al lado. */
+export interface RegistroDns {
+  tipo: string
+  nombre: string
+  valor: string
+  explicacion: string
+}
+
+/**
+ * Un dominio propio y en qué punto del alta está.
+ *
+ * `paraApuntarElTrafico` viene vacío si la plataforma todavía no publicó su destino: es
+ * preferible no decir nada a dictar una IP inventada.
+ */
+export interface Dominio {
+  id: number
+  dominio: string
+  estado: EstadoDeDominio
+  esPrincipal: boolean
+  verificadoEn: string | null
+  ultimaVerificacion: string | null
+  ultimoError: string | null
+  verificacion: RegistroDns
+  paraApuntarElTrafico: RegistroDns[]
 }
 
 export interface GuardarConfiguracionRequest {
@@ -483,7 +510,8 @@ export interface TenantAdmin {
   id: number
   slug: string
   nombre: string
-  dominioCustom: string | null
+  /** Solo para mirar: los dominios los da de alta el dueño y se verifican por DNS. */
+  dominioPrincipal: string | null
   logoUrl: string | null
   colorPrimario: string | null
   colorSecundario: string | null
@@ -499,7 +527,6 @@ export interface TenantAdmin {
 export interface CrearTenantRequest {
   slug: string
   nombre: string
-  dominioCustom: string | null
   emailDelOwner: string
   nombreDelOwner: string
   passwordDelOwner: string
@@ -508,7 +535,6 @@ export interface CrearTenantRequest {
 export interface ActualizarTenantRequest {
   slug: string
   nombre: string
-  dominioCustom: string | null
   activo: boolean
 }
 

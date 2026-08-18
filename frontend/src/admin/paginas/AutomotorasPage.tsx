@@ -14,7 +14,6 @@ export function AutomotorasPage() {
   const [formulario, setFormulario] = useState({
     slug: '',
     nombre: '',
-    dominioCustom: '',
     emailDelOwner: '',
     nombreDelOwner: '',
     passwordDelOwner: '',
@@ -43,15 +42,11 @@ export function AutomotorasPage() {
     setCreando(true)
 
     try {
-      await api.admin.crearTenant({
-        ...formulario,
-        dominioCustom: formulario.dominioCustom || null,
-      })
+      await api.admin.crearTenant(formulario)
 
       setFormulario({
         slug: '',
         nombre: '',
-        dominioCustom: '',
         emailDelOwner: '',
         nombreDelOwner: '',
         passwordDelOwner: '',
@@ -77,7 +72,6 @@ export function AutomotorasPage() {
       await api.admin.actualizarTenant(tenant.id, {
         slug: tenant.slug,
         nombre: tenant.nombre,
-        dominioCustom: tenant.dominioCustom,
         activo: !tenant.activo,
       })
       await cargar()
@@ -112,7 +106,7 @@ export function AutomotorasPage() {
                 </p>
                 <p className="text-sm text-slate-500">
                   /t/{tenant.slug}
-                  {tenant.dominioCustom && ` · ${tenant.dominioCustom}`} · desde{' '}
+                  {tenant.dominioPrincipal && ` · ${tenant.dominioPrincipal}`} · desde{' '}
                   {fecha(tenant.createdAt)}
                 </p>
               </div>
@@ -159,15 +153,6 @@ export function AutomotorasPage() {
               placeholder="automotora-norte"
               value={formulario.slug}
               onChange={(e) => setFormulario({ ...formulario, slug: e.target.value })}
-              className={entradaClase}
-            />
-          </Campo>
-
-          <Campo etiqueta="Dominio propio (opcional)" errores={errores.DominioCustom}>
-            <input
-              placeholder="automotoranorte.uy"
-              value={formulario.dominioCustom}
-              onChange={(e) => setFormulario({ ...formulario, dominioCustom: e.target.value })}
               className={entradaClase}
             />
           </Campo>

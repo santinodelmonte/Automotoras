@@ -44,6 +44,21 @@ public enum Moneda
     Uyu = 2,
 }
 
+/// <summary>
+/// En qué punto del alta está un dominio propio.
+/// </summary>
+/// <remarks>
+/// Solo un dominio <c>Verificado</c> resuelve tráfico. <c>Caido</c> no es lo mismo que
+/// <c>Pendiente</c>: es un dominio que ya estuvo sirviendo y dejó de verificar, y esa
+/// diferencia importa para saber si hay un sitio que se cayó o uno que nunca arrancó.
+/// </remarks>
+public enum EstadoDeDominio
+{
+    Pendiente = 1,
+    Verificado = 2,
+    Caido = 3,
+}
+
 public enum EstadoVehiculo
 {
     Disponible = 1,

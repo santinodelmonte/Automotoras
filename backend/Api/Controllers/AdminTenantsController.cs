@@ -56,8 +56,21 @@ public sealed class AdminTenantsController : ControllerBase
             _db.Vehiculos.IgnoreQueryFilters().Select(v => v.TenantId),
             cancellationToken).ConfigureAwait(false);
 
+        var dominios = await _db.Dominios
+            .IgnoreQueryFilters()
+            .Where(d => d.EsPrincipal)
+            .Select(d => new { d.TenantId, d.Dominio })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var principales = dominios.ToDictionary(d => d.TenantId, d => d.Dominio);
+
         return Ok(tenants
-            .Select(t => ADto(t, usuarios.GetValueOrDefault(t.Id), vehiculos.GetValueOrDefault(t.Id)))
+            .Select(t => ADto(
+                t,
+                principales.GetValueOrDefault(t.Id),
+                usuarios.GetValueOrDefault(t.Id),
+                vehiculos.GetValueOrDefault(t.Id)))
             .ToList());
     }
 
@@ -77,7 +90,7 @@ public sealed class AdminTenantsController : ControllerBase
 
         var (usuarios, vehiculos) = await ContarAsync(id, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ADto(tenant, usuarios, vehiculos));
+        return Ok(ADto(tenant, await PrincipalAsync(id, cancellationToken).ConfigureAwait(false), usuarios, vehiculos));
     }
 
     [HttpPost]
@@ -90,18 +103,11 @@ public sealed class AdminTenantsController : ControllerBase
         ArgumentNullException.ThrowIfNull(request);
 
         var slug = request.Slug.Trim().ToLowerInvariant();
-        var dominio = Dominio(request.DominioCustom);
         var email = Emails.Normalizar(request.EmailDelOwner);
 
         if (await _db.Tenants.AnyAsync(t => t.Slug == slug, cancellationToken).ConfigureAwait(false))
         {
             return Conflicto("Ya hay una automotora con ese slug.");
-        }
-
-        if (dominio is not null
-            && await _db.Tenants.AnyAsync(t => t.DominioCustom == dominio, cancellationToken).ConfigureAwait(false))
-        {
-            return Conflicto("Ya hay una automotora con ese dominio.");
         }
 
         var emailTomado = await _db.Users
@@ -118,7 +124,6 @@ public sealed class AdminTenantsController : ControllerBase
         {
             Slug = slug,
             Nombre = request.Nombre.Trim(),
-            DominioCustom = dominio,
         };
 
         _db.Tenants.Add(tenant);
@@ -141,7 +146,10 @@ public sealed class AdminTenantsController : ControllerBase
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        return CreatedAtAction(nameof(Obtener), new { id = tenant.Id }, ADto(tenant, usuarios: 1, vehiculos: 0));
+        return CreatedAtAction(
+            nameof(Obtener),
+            new { id = tenant.Id },
+            ADto(tenant, dominioPrincipal: null, usuarios: 1, vehiculos: 0));
     }
 
     [HttpPut("{id:int}")]
@@ -165,23 +173,14 @@ public sealed class AdminTenantsController : ControllerBase
         }
 
         var slug = request.Slug.Trim().ToLowerInvariant();
-        var dominio = Dominio(request.DominioCustom);
 
         if (await _db.Tenants.AnyAsync(t => t.Slug == slug && t.Id != id, cancellationToken).ConfigureAwait(false))
         {
             return Conflicto("Ya hay otra automotora con ese slug.");
         }
 
-        if (dominio is not null
-            && await _db.Tenants.AnyAsync(t => t.DominioCustom == dominio && t.Id != id, cancellationToken)
-                .ConfigureAwait(false))
-        {
-            return Conflicto("Ya hay otra automotora con ese dominio.");
-        }
-
         tenant.Slug = slug;
         tenant.Nombre = request.Nombre.Trim();
-        tenant.DominioCustom = dominio;
 
         // Dar de baja una automotora le apaga el sitio público y le impide entrar al
         // panel. No se borra nada: los datos siguen, por si vuelve.
@@ -191,8 +190,20 @@ public sealed class AdminTenantsController : ControllerBase
 
         var (usuarios, vehiculos) = await ContarAsync(id, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ADto(tenant, usuarios, vehiculos));
+        return Ok(ADto(tenant, await PrincipalAsync(id, cancellationToken).ConfigureAwait(false), usuarios, vehiculos));
     }
+
+    /// <summary>
+    /// Dominio propio de la automotora, para mostrar. Cross-tenant porque el SuperAdmin no
+    /// tiene tenant y sin el escape el filtro global devolvería siempre nulo.
+    /// </summary>
+    private async Task<string?> PrincipalAsync(int tenantId, CancellationToken cancellationToken)
+        => await _db.Dominios
+            .IgnoreQueryFilters()
+            .Where(d => d.TenantId == tenantId && d.EsPrincipal)
+            .Select(d => d.Dominio)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
 
     private async Task<(int Usuarios, int Vehiculos)> ContarAsync(int tenantId, CancellationToken cancellationToken)
     {
@@ -222,12 +233,12 @@ public sealed class AdminTenantsController : ControllerBase
         return conteos.ToDictionary(c => c.TenantId, c => c.Cantidad);
     }
 
-    private static TenantAdminDto ADto(Tenant tenant, int usuarios, int vehiculos)
+    private static TenantAdminDto ADto(Tenant tenant, string? dominioPrincipal, int usuarios, int vehiculos)
         => new(
             tenant.Id,
             tenant.Slug,
             tenant.Nombre,
-            tenant.DominioCustom,
+            dominioPrincipal,
             tenant.LogoUrl,
             tenant.ColorPrimario,
             tenant.ColorSecundario,
@@ -238,9 +249,6 @@ public sealed class AdminTenantsController : ControllerBase
             tenant.CreatedAt,
             usuarios,
             vehiculos);
-
-    private static string? Dominio(string? valor)
-        => string.IsNullOrWhiteSpace(valor) ? null : valor.Trim().ToLowerInvariant();
 
     private ActionResult Conflicto(string detalle)
         => Problem(detail: detalle, statusCode: StatusCodes.Status409Conflict);

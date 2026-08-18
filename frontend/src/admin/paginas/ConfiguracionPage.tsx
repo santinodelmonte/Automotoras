@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, ApiError } from '@shared/api/client'
 import { achicar, nombreDeSubida } from '@admin/imagenes'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
@@ -90,19 +91,17 @@ export function ConfiguracionPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="font-semibold">Dirección del sitio</h2>
         <p className="mt-1 text-sm text-slate-500">
-          El slug y el dominio propio los administra el equipo del SaaS: cambiarlos apaga la
-          dirección por la que tu sitio ya está circulando, y hay que coordinar el DNS.
+          El slug lo administra el equipo del SaaS: cambiarlo apaga la dirección por la que tu
+          sitio ya está circulando. Tu dominio propio lo manejás vos, en{' '}
+          <Link to="/admin/dominios" className="underline">
+            Dominio
+          </Link>
+          .
         </p>
 
-        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-slate-500">Slug</dt>
-            <dd className="font-mono">/t/{actual.slug}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Dominio propio</dt>
-            <dd className="font-mono">{actual.dominioCustom ?? '—'}</dd>
-          </div>
+        <dl className="mt-3 text-sm">
+          <dt className="text-slate-500">Slug</dt>
+          <dd className="font-mono">/t/{actual.slug}</dd>
         </dl>
       </section>
 

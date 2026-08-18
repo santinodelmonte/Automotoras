@@ -2,6 +2,7 @@ import { sesionGuardada } from './sesionGuardada'
 import type {
   ActualizarTenantRequest,
   Benchmark,
+  Dominio,
   CambiarEstadoRequest,
   ConfiguracionDeTenant,
   CrearTenantRequest,
@@ -347,6 +348,19 @@ export const api = {
 
     benchmark: (dias: number, signal?: AbortSignal) =>
       request<Benchmark>(`/api/reportes/benchmark${query({ dias })}`, { signal }),
+  },
+
+  dominios: {
+    listar: (signal?: AbortSignal) => request<Dominio[]>('/api/dominios', { signal }),
+
+    agregar: (dominio: string) =>
+      request<Dominio>('/api/dominios', { method: 'POST', body: { dominio } }),
+
+    verificar: (id: number) => request<Dominio>(`/api/dominios/${id}/verificar`, { method: 'POST' }),
+
+    principal: (id: number) => request<Dominio>(`/api/dominios/${id}/principal`, { method: 'POST' }),
+
+    eliminar: (id: number) => request<void>(`/api/dominios/${id}`, { method: 'DELETE' }),
   },
 
   admin: {

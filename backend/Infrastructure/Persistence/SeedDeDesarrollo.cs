@@ -67,7 +67,6 @@ public static class SeedDeDesarrollo
                 {
                     Slug = slug,
                     Nombre = nombre,
-                    DominioCustom = dominio,
                     ColorPrimario = primario,
                     ColorSecundario = "#0f172a",
                     Whatsapp = whatsapp,
@@ -76,6 +75,21 @@ public static class SeedDeDesarrollo
                 };
 
                 db.Tenants.Add(tenant);
+                await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+                // Ya verificado: en desarrollo no hay DNS que consultar, y sin esto el
+                // sitio público del tenant no resolvería por su dominio.
+                db.Dominios.Add(new DominioDeTenant
+                {
+                    TenantId = tenant.Id,
+                    Dominio = dominio,
+                    Estado = EstadoDeDominio.Verificado,
+                    TokenDeVerificacion = "seed-de-desarrollo",
+                    EsPrincipal = true,
+                    VerificadoEn = DateTime.UtcNow,
+                    UltimaVerificacion = DateTime.UtcNow,
+                });
+
                 await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
 

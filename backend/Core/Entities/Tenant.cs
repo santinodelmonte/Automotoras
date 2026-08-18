@@ -15,9 +15,6 @@ public class Tenant : ICreatedAt
 
     public required string Nombre { get; set; }
 
-    /// <summary>Dominio propio de la automotora. Único cuando no es nulo.</summary>
-    public string? DominioCustom { get; set; }
-
     public string? LogoUrl { get; set; }
 
     /// <summary>Color en formato <c>#RRGGBB</c>.</summary>
@@ -34,6 +31,13 @@ public class Tenant : ICreatedAt
 
     /// <summary>UTC.</summary>
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// Dominios propios. Vive en su propia tabla y no como columna acá porque un dominio
+    /// pasa por un alta con verificación, y eso necesita estado que un <c>string?</c> no
+    /// tiene: token, intentos y desde cuándo está verificado.
+    /// </summary>
+    public ICollection<DominioDeTenant> Dominios { get; } = new List<DominioDeTenant>();
 
     public ICollection<User> Users { get; } = new List<User>();
     public ICollection<Vehiculo> Vehiculos { get; } = new List<Vehiculo>();

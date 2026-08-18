@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using AutomotoraSaaS.Core.Common;
+using AutomotoraSaaS.Core.Dominios;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,11 +36,13 @@ public sealed class JobsController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly IConfiguration _configuracion;
+    private readonly IServicioDeDominios _dominios;
 
-    public JobsController(AppDbContext db, IConfiguration configuracion)
+    public JobsController(AppDbContext db, IConfiguration configuracion, IServicioDeDominios dominios)
     {
         _db = db;
         _configuracion = configuracion;
+        _dominios = dominios;
     }
 
     /// <summary>
@@ -155,6 +159,33 @@ public sealed class JobsController : ControllerBase
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return Ok(request.Precios.Count);
+    }
+
+    /// <summary>
+    /// Repasa los dominios propios: los pendientes por si ya propagó el DNS, y los
+    /// verificados por si dejaron de apuntar.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que hace que el alta de un dominio termine sola. Sin esto, una automotora que
+    /// publica el TXT un domingo a la noche queda esperando hasta que alguien entre al panel
+    /// y apriete verificar.
+    /// <para>
+    /// Idempotente: correrlo dos veces seguidas vuelve a consultar el DNS y llega al mismo
+    /// estado. Un dominio que ya verificó no se toca hasta que pase la ventana de
+    /// reverificación, así que reintentar no castiga a nadie.
+    /// </para>
+    /// </remarks>
+    [HttpPost("verificar-dominios")]
+    [ProducesResponseType(typeof(ResumenDeVerificaciones), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResumenDeVerificaciones>> VerificarDominios(
+        CancellationToken cancellationToken)
+    {
+        if (!SecretoCorrecto())
+        {
+            return Unauthorized();
+        }
+
+        return Ok(await _dominios.ReverificarPendientesAsync(cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary>

@@ -52,7 +52,7 @@ public sealed class PublicSitemapController : ControllerBase
 
         var tenant = await _db.Tenants
             .Where(t => t.Id == tenantId)
-            .Select(t => new { t.Slug, t.DominioCustom })
+            .Select(t => new { t.Slug })
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -60,6 +60,15 @@ public sealed class PublicSitemapController : ControllerBase
         {
             return NotFound();
         }
+
+        // El principal y no cualquiera: una automotora puede tener varios dominios
+        // apuntando acá, y el sitemap tiene que declarar uno solo. Dos sitemaps con las
+        // mismas páginas en dominios distintos es contenido duplicado.
+        var dominioPropio = await _db.Dominios
+            .Where(d => d.EsPrincipal && d.Estado == EstadoDeDominio.Verificado)
+            .Select(d => d.Dominio)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         var vehiculos = await _db.Vehiculos
             .Where(v => v.Estado == EstadoVehiculo.Disponible)
@@ -72,7 +81,7 @@ public sealed class PublicSitemapController : ControllerBase
         // Si la automotora ya tiene su dominio, las URLs son las de su dominio. Si todavía
         // no, se usa por dónde entró el request: publicar URLs de un dominio que no existe
         // deja el sitemap entero apuntando a la nada.
-        var baseUrl = tenant.DominioCustom is { Length: > 0 } dominio
+        var baseUrl = dominioPropio is { Length: > 0 } dominio
             ? $"https://{dominio}"
             : $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
 

@@ -7,11 +7,16 @@ using FluentValidation;
 namespace AutomotoraSaaS.Core.Admin;
 
 /// <summary>Una automotora vista por el SuperAdmin, con el tamaño de su operación.</summary>
+/// <param name="DominioPrincipal">
+/// Solo para mirar. Los dominios propios los da de alta el dueño desde su panel y se
+/// verifican por DNS; el SuperAdmin no los carga a mano, porque escribir un dominio en un
+/// formulario no prueba que sea de quien lo escribe.
+/// </param>
 public sealed record TenantAdminDto(
     int Id,
     string Slug,
     string Nombre,
-    string? DominioCustom,
+    string? DominioPrincipal,
     string? LogoUrl,
     string? ColorPrimario,
     string? ColorSecundario,
@@ -33,13 +38,12 @@ public sealed record TenantAdminDto(
 public sealed record CrearTenantRequest(
     string Slug,
     string Nombre,
-    string? DominioCustom,
     string EmailDelOwner,
     string NombreDelOwner,
     string PasswordDelOwner);
 
-/// <summary>Edición de la identidad de una automotora. Solo el SuperAdmin toca slug y dominio.</summary>
-public sealed record ActualizarTenantRequest(string Slug, string Nombre, string? DominioCustom, bool Activo);
+/// <summary>Edición de la identidad de una automotora. El slug lo toca solo el SuperAdmin.</summary>
+public sealed record ActualizarTenantRequest(string Slug, string Nombre, bool Activo);
 
 public sealed record GuardarMarcaRequest(string Nombre, bool Activo);
 
@@ -56,11 +60,6 @@ public sealed class CrearTenantRequestValidator : AbstractValidator<CrearTenantR
             .WithMessage("El slug va en minúsculas, con números y guiones, sin empezar ni terminar en guion.");
 
         RuleFor(x => x.Nombre).NotEmpty().MaximumLength(160);
-
-        RuleFor(x => x.DominioCustom)
-            .Matches(FormatosDeTenant.Dominio)
-            .When(x => !string.IsNullOrWhiteSpace(x.DominioCustom))
-            .WithMessage("El dominio no tiene un formato válido.");
 
         RuleFor(x => x.EmailDelOwner)
             .NotEmpty().MaximumLength(200).EmailAddress()
@@ -80,11 +79,6 @@ public sealed class ActualizarTenantRequestValidator : AbstractValidator<Actuali
     {
         RuleFor(x => x.Slug).Matches(FormatosDeTenant.Slug);
         RuleFor(x => x.Nombre).NotEmpty().MaximumLength(160);
-
-        RuleFor(x => x.DominioCustom)
-            .Matches(FormatosDeTenant.Dominio)
-            .When(x => !string.IsNullOrWhiteSpace(x.DominioCustom))
-            .WithMessage("El dominio no tiene un formato válido.");
     }
 }
 

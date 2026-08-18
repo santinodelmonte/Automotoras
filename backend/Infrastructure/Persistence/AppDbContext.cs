@@ -54,6 +54,7 @@ public class AppDbContext : DbContext
 
     // Catálogo global, sin tenant.
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<DominioDeTenant> Dominios => Set<DominioDeTenant>();
     public DbSet<Marca> Marcas => Set<Marca>();
     public DbSet<Modelo> Modelos => Set<Modelo>();
     public DbSet<VersionVehiculo> Versiones => Set<VersionVehiculo>();

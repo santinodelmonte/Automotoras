@@ -57,7 +57,8 @@ Monorepo:
 > **Avance:** pasos 0 (esqueleto), 2 (modelo de datos), 3 (autenticación, roles y
 > resolución de tenant) y 4 (features de fase 1) están hechos. De la fase 2 ya está el
 > reporte de demanda, las sugerencias de compra, el precio de referencia de mercado y los
-> benchmarks anonimizados cross-tenant. Falta el dominio custom automatizado.
+> benchmarks anonimizados cross-tenant y los dominios custom automatizados. Con eso la
+> fase 2 queda cerrada.
 >
 > El backend se verifica en GitHub Actions: cada push compila en Release y corre los
 > tests. Se agregó porque el código se escribió en un entorno sin SDK de .NET, y sin eso
@@ -324,7 +325,10 @@ un mínimo de N registros para publicarse.
   dice si conviene
 - Precio de referencia de mercado vía API pública de MercadoLibre, con snapshots diarios en
   tabla propia ✅ hecho, con el relevamiento del lado del cron y no del proceso web
-- Custom domains automatizados
+- Custom domains automatizados ✅ hecho: tabla `dominios_tenant`, verificación por un TXT
+  en `_automotora.<dominio>` y un job de reverificación. Un dominio sin verificar no
+  resuelve tráfico, que es lo que impide reclamar el dominio de otro escribiéndolo en un
+  formulario
 - Benchmarks anonimizados cross-tenant ✅ hecho: días para vender por carrocería y
   conversión de visitas en consultas, contra el promedio del resto. Los umbrales de
   anonimato viven en `UmbralesDeBenchmark` y se cuentan excluyendo a quien pregunta

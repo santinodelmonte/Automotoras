@@ -20,7 +20,8 @@ El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está 
 > endpoint. De la fase 2 ya está el reporte de demanda: qué unidad se mira y no se
 > consulta, cuál lleva tiempo sin que nadie la vea, y qué le están pidiendo a la
 > automotora que no tiene en stock. Y los benchmarks anonimizados, que la comparan contra
-> el resto del mercado sin que ninguna otra automotora sea identificable.
+> el resto del mercado sin que ninguna otra automotora sea identificable. Y el dominio
+> propio, que cada automotora da de alta sola y se verifica por DNS.
 >
 > Cada push, en GitHub Actions ([`.github/workflows`](.github/workflows)): compila en
 > Release, corre los tests, verifica que el modelo y las migraciones no se hayan desfasado,
@@ -237,6 +238,7 @@ nada de ningún tenant.
 | `GET /api/reportes/demanda` | Owner | Reporte de demanda: señales por unidad y demanda insatisfecha |
 | `GET /api/reportes/sugerencias` | Owner | Qué conviene traer, cruzando demanda con rotación |
 | `GET /api/reportes/benchmark` | Owner | Cómo le va contra el resto del mercado, en agregados anonimizados |
+| `/api/dominios` | Owner | Alta, verificación por DNS y baja de sus dominios propios |
 
 **Sitio público** — sin autenticación, con el tenant resuelto por dominio o slug
 
@@ -259,6 +261,7 @@ nada de ningún tenant.
 | `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
 | `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
 | `POST /api/jobs/precios-referencia` | Cron externo | Precios de mercado relevados, con `X-Job-Secret` |
+| `POST /api/jobs/verificar-dominios` | Cron externo | Repasa los dominios propios contra el DNS, con `X-Job-Secret` |
 
 ## El reporte de demanda
 
@@ -339,6 +342,42 @@ En el panel, una comparación que no existe simplemente no se dibuja: una secci�
 invita a leer el silencio como un mal resultado, cuando lo único que dice es que todavía no
 hay suficiente mercado relevado.
 
+## El dominio propio
+
+Antes el dominio era una columna de `tenants` que cargaba el SuperAdmin a mano. Eso tenía
+dos problemas, y el segundo es el grave: la automotora dependía de que alguien de la
+plataforma le tocara una fila, y **nada verificaba que el dominio fuera realmente suyo** —
+escribirlo en un formulario alcanzaba para quedarse con él—.
+
+Ahora los dominios viven en `dominios_tenant` y el alta la hace la automotora sola:
+
+1. Escribe su dominio en el panel. Queda **pendiente**, y un dominio pendiente no resuelve
+   tráfico.
+2. Publica el TXT que le mostramos, en `_automotora.<dominio>`, con el token de esa fila.
+3. Aprieta verificar —o espera al cron, que hace lo mismo sin que nadie entre al panel—.
+   Recién ahí el dominio empieza a servir su sitio.
+
+**El TXT y no "que el dominio ya apunte acá"**, porque son dos cosas distintas y conviene
+poder hacerlas en ese orden: primero se prueba la propiedad, después se mueve el tráfico.
+Al revés, la automotora tendría que apagar el sitio que ya tiene andando solo para poder
+empezar el alta.
+
+Dos reglas cuidan el caso de que algo se rompa después:
+
+- **Un dominio verificado no se apaga al primer fallo.** Puede ser un DNS lento o una zona
+  en propagación, y bajarle el sitio a una automotora por eso es peor que esperar. Recién a
+  la tercera reverificación fallida seguida pasa a `Caido` y deja de resolver.
+- **Un DNS que no contesta no cuenta como fallo.** Un timeout no prueba nada; si contara,
+  una caída del resolver apagaría los sitios de todas las automotoras a la vez.
+
+Un tenant puede tener varios dominios —el apex, un alias viejo que todavía recibe tráfico—
+pero solo uno es el principal: es el que va en las URLs del sitemap, donde tener dos
+respuestas posibles sería contenido duplicado.
+
+La consulta de DNS está detrás de `IConsultaDns`, con `DnsClient` de un lado y un doble en
+memoria del otro. Sin eso, cada test necesitaría un dominio real con un TXT real y la suite
+pasaría a depender de que nadie toque una zona DNS que no está en este repositorio.
+
 ## Decisiones de fase 1
 
 **Las fotos se achican en el navegador y se suben de a una.** Una foto de celular pesa
@@ -389,6 +428,9 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | `Storage:Bucket` / `Storage:Endpoint` | `Storage__Bucket` / `Storage__Endpoint` | Bucket y endpoint S3-compatible (Cloudflare R2). |
 | `Storage:AccessKeyId` / `Storage:SecretAccessKey` | `Storage__AccessKeyId` / `Storage__SecretAccessKey` | Credenciales del object storage. Nunca versionar. |
 | `Jobs:Secret` | `Jobs__Secret` | Valor esperado en el header `X-Job-Secret` de `POST /api/jobs/{nombre}`. |
+| `Dominios:DestinoCname` / `Dominios:DestinoIp` | `Dominios__DestinoCname` / `Dominios__DestinoIp` | Adónde apuntar el DNS de un dominio propio. Vacío: no se dictan instrucciones. |
+| `Dominios:ToleranciaDeFallos` | `Dominios__ToleranciaDeFallos` | Reverificaciones seguidas que tienen que fallar para apagar un dominio que ya andaba. |
+| `Dominios:DiasEntreReverificaciones` | `Dominios__DiasEntreReverificaciones` | Cada cuánto el cron revisa un dominio ya verificado. |
 | `Analytics:IpHashSalt` | `Analytics__IpHashSalt` | Sal para hashear las IPs de los eventos. Si queda vacía se usa `Jwt:Secret`. |
 | `Seed:Password` | `Seed__Password` | Contraseña de los usuarios de desarrollo. Solo se usa en Development; sin valor, el seed no corre. |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0` | Orígenes del frontend habilitados. En desarrollo, `http://localhost:5173`. |

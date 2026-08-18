@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AutomotoraSaaS.Core.Auth;
+using AutomotoraSaaS.Core.Dominios;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Storage;
@@ -75,6 +76,9 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     /// <summary>Storage en memoria. Los tests no tocan el disco ni salen a la red.</summary>
     public AlmacenamientoDePrueba Almacenamiento { get; } = new();
 
+    /// <summary>DNS en memoria, para poder publicar y borrar TXT desde un test.</summary>
+    public DnsDePrueba Dns { get; } = new();
+
     public const string EmailOwnerNorte = "owner@norte.uy";
     public const string EmailOwnerSur = "owner@sur.uy";
     public const string EmailVendedorNorte = "vendedor@norte.uy";
@@ -146,6 +150,9 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
             servicios.RemoveAll<IImageStorage>();
             servicios.AddSingleton<IImageStorage>(Almacenamiento);
+
+            servicios.RemoveAll<IConsultaDns>();
+            servicios.AddSingleton<IConsultaDns>(Dns);
         });
     }
 
@@ -169,7 +176,6 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         {
             Slug = "norte",
             Nombre = "Automotora Norte",
-            DominioCustom = DominioDeNorte,
             ColorPrimario = "#059669",
             Whatsapp = "+59899111222",
         };
@@ -182,6 +188,21 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
         TenantNorte = norte.Id;
         TenantSur = sur.Id;
+
+        // Verificado y principal: el sitio público de Norte se prueba entrando por su
+        // dominio, y un dominio sin verificar no resuelve.
+        db.Dominios.Add(new DominioDeTenant
+        {
+            TenantId = norte.Id,
+            Dominio = DominioDeNorte,
+            Estado = EstadoDeDominio.Verificado,
+            TokenDeVerificacion = "token-de-norte",
+            EsPrincipal = true,
+            VerificadoEn = DateTime.UtcNow,
+            UltimaVerificacion = DateTime.UtcNow,
+        });
+
+        db.SaveChanges();
 
         var hash = hasher.Hash(Password);
 

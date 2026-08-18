@@ -1,3 +1,5 @@
+using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -25,6 +27,15 @@ public sealed class ResolvedorDeTenantPublico
     }
 
     /// <summary>Id del tenant dueño del dominio, o <c>null</c>.</summary>
+    /// <remarks>
+    /// Solo resuelven los dominios verificados. Uno pendiente todavía no probó ser de quien
+    /// lo dio de alta, y servirle tráfico sería dejar que cualquiera reclame un dominio
+    /// ajeno escribiéndolo en un formulario.
+    /// <para>
+    /// Sin filtro de tenant: el request es anónimo y justamente lo que se está resolviendo
+    /// es a qué tenant pertenece, así que todavía no hay ninguno en contexto.
+    /// </para>
+    /// </remarks>
     public async Task<int?> PorDominioAsync(string? host, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(host))
@@ -32,11 +43,14 @@ public sealed class ResolvedorDeTenantPublico
             return null;
         }
 
-        var dominio = NormalizarDominio(host);
+        var dominio = NombresDeDominio.Normalizar(host);
 
-        return await _db.Tenants
-            .Where(t => t.Activo && t.DominioCustom == dominio)
-            .Select(t => (int?)t.Id)
+        return await _db.Dominios
+            .IgnoreQueryFilters()
+            .Where(d => d.Dominio == dominio
+                        && d.Estado == EstadoDeDominio.Verificado
+                        && d.Tenant!.Activo)
+            .Select(d => (int?)d.TenantId)
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -56,18 +70,6 @@ public sealed class ResolvedorDeTenantPublico
             .Select(t => (int?)t.Id)
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// El <c>Host</c> llega como lo mandó el navegador. Se compara en minúsculas y sin el
-    /// <c>www.</c>: los dominios no distinguen mayúsculas y nadie quiere cargar dos filas
-    /// para el mismo sitio.
-    /// </summary>
-    public static string NormalizarDominio(string host)
-    {
-        var dominio = host.Trim().ToLowerInvariant();
-
-        return dominio.StartsWith("www.", StringComparison.Ordinal) ? dominio[4..] : dominio;
     }
 
     public static string NormalizarSlug(string slug) => slug.Trim().ToLowerInvariant();

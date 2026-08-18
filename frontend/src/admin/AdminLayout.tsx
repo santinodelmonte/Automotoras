@@ -9,6 +9,7 @@ const enlaces = [
   { a: '/admin/demanda', texto: 'Demanda', roles: ['Owner'], exacto: false },
   { a: '/admin/usuarios', texto: 'Usuarios', roles: ['Owner'], exacto: false },
   { a: '/admin/configuracion', texto: 'Configuración', roles: ['Owner'], exacto: false },
+  { a: '/admin/dominios', texto: 'Dominio', roles: ['Owner'], exacto: false },
   { a: '/admin/automotoras', texto: 'Automotoras', roles: ['SuperAdmin'], exacto: false },
   { a: '/admin/catalogo', texto: 'Catálogo', roles: ['SuperAdmin'], exacto: false },
   { a: '/admin/solicitudes', texto: 'Solicitudes', roles: ['SuperAdmin'], exacto: false },

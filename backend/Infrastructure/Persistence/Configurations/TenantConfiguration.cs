@@ -14,7 +14,6 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
 
         builder.Property(t => t.Slug).HasMaxLength(60).IsRequired();
         builder.Property(t => t.Nombre).HasMaxLength(160).IsRequired();
-        builder.Property(t => t.DominioCustom).HasMaxLength(255);
         builder.Property(t => t.LogoUrl).HasMaxLength(500);
         builder.Property(t => t.ColorPrimario).HasMaxLength(7);
         builder.Property(t => t.ColorSecundario).HasMaxLength(7);
@@ -22,10 +21,9 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.Telefono).HasMaxLength(30);
         builder.Property(t => t.Direccion).HasMaxLength(255);
 
-        // El slug resuelve el tenant en /t/{slug} y el dominio lo resuelve por Host.
-        // Los dos son claves de entrada al sitio público: si se duplican, el tenant que
-        // se resuelve pasa a ser indeterminado.
+        // El slug resuelve el tenant en /t/{slug}. Es una clave de entrada al sitio
+        // público: si se duplica, el tenant que se resuelve pasa a ser indeterminado. Los
+        // dominios propios tienen su propio índice único, en dominios_tenant.
         builder.HasIndex(t => t.Slug).IsUnique();
-        builder.HasIndex(t => t.DominioCustom).IsUnique();
     }
 }

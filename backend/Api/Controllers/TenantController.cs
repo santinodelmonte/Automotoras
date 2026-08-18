@@ -135,7 +135,6 @@ public sealed class TenantController : ControllerBase
         => new(
             tenant.Slug,
             tenant.Nombre,
-            tenant.DominioCustom,
             tenant.LogoUrl,
             tenant.ColorPrimario,
             tenant.ColorSecundario,

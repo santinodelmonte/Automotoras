@@ -6,15 +6,14 @@ namespace AutomotoraSaaS.Core.Tenants;
 /// La automotora vista desde su propio panel.
 /// </summary>
 /// <remarks>
-/// El slug y el dominio propio se muestran pero no se editan desde acá: son la puerta de
-/// entrada al sitio público. Cambiarlos apaga la dirección por la que la automotora ya
-/// está publicada y circulando, así que los toca el SuperAdmin por <c>/api/admin/*</c>,
-/// que es donde se coordina el cambio de DNS.
+/// El slug se muestra pero no se edita desde acá: es la puerta de entrada al sitio público
+/// y cambiarlo apaga la dirección por la que la automotora ya está publicada y circulando,
+/// así que lo toca el SuperAdmin por <c>/api/admin/*</c>. Los dominios propios sí los
+/// maneja el dueño, pero por <c>/api/dominios</c>, que es donde vive la verificación.
 /// </remarks>
 public sealed record ConfiguracionDeTenantDto(
     string Slug,
     string Nombre,
-    string? DominioCustom,
     string? LogoUrl,
     string? ColorPrimario,
     string? ColorSecundario,
