@@ -15,8 +15,9 @@ namespace AutomotoraSaaS.Infrastructure.Persistence;
 /// omisión, porque una contraseña por defecto que sobreviva a producción es exactamente
 /// la clase de cosa que nadie nota hasta que es tarde.
 /// <para>
-/// El stock de vehículos y los eventos sintéticos llegan con las features de fase 1: no
-/// tiene sentido sembrar vehículos antes de que exista el ABM que los mantiene.
+/// El stock y los noventa días de eventos sintéticos los agrega
+/// <see cref="SeedDeVehiculos"/>. Sin eventos, el dashboard queda en cero y no hay forma
+/// de ver si los reportes están bien hasta que el producto lleve meses en producción.
 /// </para>
 /// </remarks>
 public static class SeedDeDesarrollo
@@ -24,11 +25,13 @@ public static class SeedDeDesarrollo
     public static async Task EjecutarAsync(
         AppDbContext db,
         IPasswordHasher hasher,
+        TimeProvider reloj,
         string password,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(hasher);
+        ArgumentNullException.ThrowIfNull(reloj);
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
 
         // El seed escribe datos de varios tenants —y un SuperAdmin sin tenant— sin ningún
@@ -43,6 +46,10 @@ public static class SeedDeDesarrollo
         // ve la base vacía vuelve a insertar y choca contra los índices únicos.
         await SembrarTenantsAsync(db, hash, cancellationToken).ConfigureAwait(false);
         await SembrarCatalogoAsync(db, cancellationToken).ConfigureAwait(false);
+
+        // El stock y su historia de demanda van al final: necesitan las automotoras y el
+        // catálogo ya cargados.
+        await SeedDeVehiculos.EjecutarAsync(db, reloj, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task SembrarTenantsAsync(AppDbContext db, string hash, CancellationToken cancellationToken)
@@ -135,6 +142,7 @@ public static class SeedDeDesarrollo
     [
         ("norte", "Automotora Norte", "automotoranorte.uy", "#059669", "+59899111222"),
         ("sur", "Automotora Sur", "automotorasur.uy", "#2563eb", "+59899333444"),
+        ("costa", "Autos de la Costa", "autosdelacosta.uy", "#ea580c", "+59899555666"),
     ];
 
     /// <summary>

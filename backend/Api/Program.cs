@@ -224,7 +224,11 @@ static async Task SembrarDesarrolloAsync(WebApplication app)
         }
 
         await SeedDeDesarrollo
-            .EjecutarAsync(db, scope.ServiceProvider.GetRequiredService<IPasswordHasher>(), password)
+            .EjecutarAsync(
+                db,
+                scope.ServiceProvider.GetRequiredService<IPasswordHasher>(),
+                scope.ServiceProvider.GetRequiredService<TimeProvider>(),
+                password)
             .ConfigureAwait(false);
 
         logger.LogInformation("Seed de desarrollo aplicado.");

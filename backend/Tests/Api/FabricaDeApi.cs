@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Storage;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -59,6 +60,21 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     public int VendedorDeNorte { get; private set; }
     public int InactivoDeNorte { get; private set; }
 
+    public int MarcaId { get; private set; }
+    public int ModeloId { get; private set; }
+    public int ModeloDadoDeBaja { get; private set; }
+
+    /// <summary>Disponible, y por lo tanto visible en el sitio público de Norte.</summary>
+    public int VehiculoDeNorte { get; private set; }
+
+    /// <summary>Vendido: sigue en la base y no sale en el sitio público.</summary>
+    public int VendidoDeNorte { get; private set; }
+
+    public int VehiculoDeSur { get; private set; }
+
+    /// <summary>Storage en memoria. Los tests no tocan el disco ni salen a la red.</summary>
+    public AlmacenamientoDePrueba Almacenamiento { get; } = new();
+
     public const string EmailOwnerNorte = "owner@norte.uy";
     public const string EmailOwnerSur = "owner@sur.uy";
     public const string EmailVendedorNorte = "vendedor@norte.uy";
@@ -66,6 +82,8 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     public const string EmailSuperAdmin = "super@saas.uy";
 
     public const string DominioDeNorte = "automotoranorte.uy";
+
+    public const string SecretoDeJobs = "secreto-de-jobs-para-los-tests";
 
     /// <summary>Abre sesión y devuelve los tokens.</summary>
     public async Task<SesionDto> LoginAsync(string email, string? password = null)
@@ -112,6 +130,8 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
                 ["Jwt:AccessTokenMinutes"] = "15",
                 ["Jwt:RefreshTokenDays"] = "30",
                 ["Cors:AllowedOrigins:0"] = "http://localhost:5173",
+                ["Jobs:Secret"] = SecretoDeJobs,
+                ["Analytics:IpHashSalt"] = "sal-de-tests-estable",
             }));
 
         builder.ConfigureServices(servicios =>
@@ -123,6 +143,9 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
             servicios.AddDbContext<AppDbContext>(opciones => opciones
                 .UseSqlite(_conexion)
                 .UseSnakeCaseNamingConvention());
+
+            servicios.RemoveAll<IImageStorage>();
+            servicios.AddSingleton<IImageStorage>(Almacenamiento);
         });
     }
 
@@ -177,7 +200,72 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         VendedorDeNorte = vendedorNorte.Id;
         InactivoDeNorte = inactivoNorte.Id;
         OwnerDeSur = ownerSur.Id;
+
+        SembrarCatalogoYStock(db, norte.Id, sur.Id);
     }
+
+    private void SembrarCatalogoYStock(AppDbContext db, int norteId, int surId)
+    {
+        var marca = new Marca { Nombre = "Volkswagen" };
+        db.Marcas.Add(marca);
+        db.SaveChanges();
+
+        var modelo = new Modelo { MarcaId = marca.Id, Nombre = "Gol", Carroceria = Carroceria.Hatchback };
+        var deBaja = new Modelo
+        {
+            MarcaId = marca.Id,
+            Nombre = "Fox",
+            Carroceria = Carroceria.Hatchback,
+            Activo = false,
+        };
+
+        db.Modelos.AddRange(modelo, deBaja);
+        db.SaveChanges();
+
+        MarcaId = marca.Id;
+        ModeloId = modelo.Id;
+        ModeloDadoDeBaja = deBaja.Id;
+
+        var disponible = NuevoVehiculo(norteId, modelo.Id, 2019, 15_000m, EstadoVehiculo.Disponible);
+        var vendido = NuevoVehiculo(norteId, modelo.Id, 2016, 9_500m, EstadoVehiculo.Vendido);
+        var deSur = NuevoVehiculo(surId, modelo.Id, 2021, 22_000m, EstadoVehiculo.Disponible);
+
+        vendido.FechaVenta = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        vendido.PrecioVenta = 9_000m;
+
+        db.Vehiculos.AddRange(disponible, vendido, deSur);
+        db.SaveChanges();
+
+        VehiculoDeNorte = disponible.Id;
+        VendidoDeNorte = vendido.Id;
+        VehiculoDeSur = deSur.Id;
+
+        db.VehiculoFotos.Add(new VehiculoFoto
+        {
+            VehiculoId = disponible.Id,
+            Url = "https://cdn.ejemplo.com/tenants/1/vehiculos/1/portada.jpg",
+            Orden = 0,
+            EsPortada = true,
+        });
+
+        db.SaveChanges();
+    }
+
+    private static Vehiculo NuevoVehiculo(int tenantId, int modeloId, int anio, decimal precio, EstadoVehiculo estado)
+        => new()
+        {
+            TenantId = tenantId,
+            ModeloId = modeloId,
+            Anio = anio,
+            Kilometraje = 60_000,
+            Combustible = Combustible.Nafta,
+            Transmision = Transmision.Manual,
+            Precio = precio,
+            Moneda = Moneda.Usd,
+            Estado = estado,
+            PrecioCosto = precio - 2_000m,
+            FechaPublicacion = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
+        };
 
     private static User NuevoUsuario(string email, string nombre, RolUsuario rol, int? tenantId, string hash)
         => new()
