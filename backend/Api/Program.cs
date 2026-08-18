@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -39,21 +40,45 @@ builder.Services.AddCors(options =>
         .AllowCredentials());
 });
 
-// La configuración de JWT se lee y se valida acá, en el arranque. Una API que levanta y
-// empieza a firmar tokens con una clave vacía es peor que una que no levanta.
-var jwt = builder.Configuration.GetSection(JwtOptions.Seccion).Get<JwtOptions>() ?? new JwtOptions();
-jwt.Validar();
+// La configuración de JWT se valida al arrancar, pero no se lee acá.
+//
+// Leerla en este punto parecía lo natural y es una trampa: `builder.Configuration` todavía
+// no tiene las fuentes que se agregan al construir el host, que es justo cuando
+// WebApplicationFactory inyecta la suya. La API levantada en los tests quedaba sin
+// secreto y ni siquiera llegaba a arrancar.
+//
+// Con ValidateOnStart se conserva lo que importaba —una API que levanta y firma tokens con
+// una clave vacía es peor que una que no levanta— y la validación corre cuando la
+// configuración ya está completa.
+builder.Services
+    .AddOptions<JwtOptions>()
+    .Validate(
+        opciones =>
+        {
+            opciones.Validar();
+            return true;
+        },
+        "La configuración de JWT es inválida.")
+    .ValidateOnStart();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer();
+
+// Los parámetros de validación del token se arman cuando se resuelven las opciones del
+// esquema, ya con toda la configuración aplicada.
+builder.Services
+    .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>>((bearer, opciones) =>
     {
+        var jwt = opciones.Value;
+
         // Sin el mapeo de claims heredado: los claims quedan con el nombre con el que se
         // emitieron ("sub", "role", "tenant_id") en vez de convertirse en las URIs largas
         // de WS-Federation. Lo que se firma es lo que se lee.
-        options.MapInboundClaims = false;
+        bearer.MapInboundClaims = false;
 
-        options.TokenValidationParameters = new TokenValidationParameters
+        bearer.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidIssuer = jwt.Issuer,
