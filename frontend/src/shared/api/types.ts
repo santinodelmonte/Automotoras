@@ -368,6 +368,93 @@ export interface Dashboard {
   masVistos: VehiculoMasVisto[]
 }
 
+// ------------------------------------------------------------------ reportes
+
+/**
+ * La lectura de una unidad en una palabra, tal como la calcula el servidor.
+ *
+ * Se decide en el backend y no acá: es una regla de negocio con umbrales, y duplicarla en
+ * el cliente sería garantizar que un día el panel y la API digan cosas distintas del
+ * mismo vehículo.
+ */
+export type SenalDeDemanda =
+  | 'SinDatos'
+  | 'Saludable'
+  | 'PrecioAlto'
+  | 'SinVisibilidad'
+  | 'Estancado'
+
+export interface DemandaDeVehiculo {
+  vehiculoId: number
+  marca: string
+  modelo: string
+  anio: number
+  estado: EstadoVehiculo
+  precio: number
+  moneda: string
+  fotoPortadaUrl: string | null
+  diasEnGondola: number
+  vistas: number
+  consultas: number
+  consultasPorCienVistas: number
+  senal: SenalDeDemanda
+}
+
+export interface ResumenDeDemanda {
+  dias: number
+  vehiculosPublicados: number
+  vistas: number
+  consultas: number
+  consultasPorCienVistas: number
+  busquedasSinResultado: number
+  diasEnGondolaPromedio: number
+  diasEnGondolaMediana: number
+  vendidosEnElPeriodo: number
+  diasHastaLaVentaPromedio: number | null
+}
+
+export interface ReporteDeDemanda {
+  resumen: ResumenDeDemanda
+  vehiculos: DemandaDeVehiculo[]
+}
+
+export interface BusquedaSinResultado {
+  marcaId: number | null
+  marca: string | null
+  modeloId: number | null
+  modelo: string | null
+  carroceria: string | null
+  anioDesde: number | null
+  anioHasta: number | null
+  moneda: string | null
+  precioDesde: number | null
+  precioHasta: number | null
+  presupuestoTipico: number | null
+  veces: number
+  sesiones: number
+  ultimaVez: string
+}
+
+/** `Comprar` cuando no hay una sola unidad de eso; si hay, el problema es otro. */
+export type TipoDeSugerencia = 'Comprar' | 'RevisarLoQueTenes'
+
+export interface SugerenciaDeCompra {
+  tipo: TipoDeSugerencia
+  marcaId: number | null
+  marca: string | null
+  modeloId: number | null
+  modelo: string | null
+  carroceria: string | null
+  anioDesde: number | null
+  anioHasta: number | null
+  moneda: string | null
+  presupuestoTipico: number | null
+  visitas: number
+  busquedas: number
+  ultimaVez: string
+  unidadesEnStock: number
+}
+
 // ---------------------------------------------------------------- superadmin
 
 export interface TenantAdmin {

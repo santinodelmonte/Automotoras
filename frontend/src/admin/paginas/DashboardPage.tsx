@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
+import { Tarjeta } from '@shared/ui/Tarjeta'
 import { entero } from '@shared/ui/formato'
 import type { Dashboard } from '@shared/api/types'
 
@@ -125,16 +126,6 @@ export function DashboardPage() {
           )}
         </ul>
       </section>
-    </div>
-  )
-}
-
-function Tarjeta({ titulo, valor, nota }: { titulo: string; valor: string; nota?: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <p className="text-sm text-slate-500">{titulo}</p>
-      <p className="mt-1 text-3xl font-bold">{valor}</p>
-      {nota && <p className="mt-1 text-xs text-slate-400">{nota}</p>}
     </div>
   )
 }

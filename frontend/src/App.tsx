@@ -5,6 +5,7 @@ import { LoginPage } from '@admin/LoginPage'
 import { AutomotorasPage } from '@admin/paginas/AutomotorasPage'
 import { CatalogoPage } from '@admin/paginas/CatalogoPage'
 import { ConfiguracionPage } from '@admin/paginas/ConfiguracionPage'
+import { ReportesPage } from '@admin/paginas/ReportesPage'
 import { SolicitudesPage } from '@admin/paginas/SolicitudesPage'
 import { UsuariosPage } from '@admin/paginas/UsuariosPage'
 import { VehiculoFormPage } from '@admin/paginas/VehiculoFormPage'
@@ -57,6 +58,14 @@ function App() {
             element={
               <RutaProtegida roles={['Owner']}>
                 <ConfiguracionPage />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="reportes"
+            element={
+              <RutaProtegida roles={['Owner']}>
+                <ReportesPage />
               </RutaProtegida>
             }
           />

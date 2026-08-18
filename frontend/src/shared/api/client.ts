@@ -5,6 +5,7 @@ import type {
   ConfiguracionDeTenant,
   CrearTenantRequest,
   CrearUsuarioRequest,
+  BusquedaSinResultado,
   Dashboard,
   FiltrosDeVehiculos,
   FiltrosDisponibles,
@@ -20,9 +21,11 @@ import type {
   PaginaDe,
   ProblemDetails,
   RegistrarEventoRequest,
+  ReporteDeDemanda,
   ResolverSolicitudRequest,
   Sesion,
   SolicitudModelo,
+  SugerenciaDeCompra,
   TenantAdmin,
   TenantPublico,
   Usuario,
@@ -334,6 +337,24 @@ export const api = {
   },
 
   dashboard: (signal?: AbortSignal) => request<Dashboard>('/api/dashboard', { signal }),
+
+  /**
+   * Los reportes de demanda. La ventana viaja en días y la acota el servidor: el cliente
+   * pide lo que quiere y el que decide cuánto se puede consultar es el que paga la
+   * consulta.
+   */
+  reportes: {
+    demanda: (dias: number, signal?: AbortSignal) =>
+      request<ReporteDeDemanda>(`/api/reportes/demanda${query({ dias })}`, { signal }),
+
+    busquedasSinResultado: (dias: number, signal?: AbortSignal) =>
+      request<BusquedaSinResultado[]>(`/api/reportes/busquedas-sin-resultado${query({ dias })}`, {
+        signal,
+      }),
+
+    sugerencias: (dias: number, signal?: AbortSignal) =>
+      request<SugerenciaDeCompra[]>(`/api/reportes/sugerencias${query({ dias })}`, { signal }),
+  },
 
   admin: {
     tenants: (signal?: AbortSignal) => request<TenantAdmin[]>('/api/admin/tenants', { signal }),
