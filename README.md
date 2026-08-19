@@ -77,15 +77,24 @@ Sigue siendo declarada y no autodetectada: `ServerVersion.AutoDetect` abre una c
 durante el arranque, y en IIS eso convierte una base momentáneamente caída en una aplicación
 que no levanta. La versión que corre se ve con `SELECT VERSION();`.
 
-Crear la base y aplicar las migraciones:
+La base no hay que crearla a mano ni hay ningún script SQL que correr: `database update`
+la crea si no existe y le aplica las migraciones. Con MySQL arrancado, un solo comando:
 
 ```bash
-"C:/xampp/mysql/bin/mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS automotora_saas CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+dotnet dotnet-ef database update --project backend/Infrastructure --startup-project backend/Infrastructure
 ```
+
+Lee la conexión de `ConnectionStrings__Default`; sin esa variable usa la que tiene por
+defecto la factory de diseño, que apunta a `localhost:3306`, base `automotora_saas`, usuario
+`root` sin contraseña — o sea, XAMPP recién instalado. Para apuntar a otro lado:
 
 ```bash
 ConnectionStrings__Default="Server=localhost;Port=3306;Database=automotora_saas;User Id=root;Password=;" Database__ServerVersion="10.4.32-mariadb" dotnet dotnet-ef database update --project backend/Infrastructure --startup-project backend/Infrastructure
 ```
+
+Los datos de ejemplo no los carga este comando: los siembra la API sola al arrancar en
+Development, si `Seed:Password` está definida. Migrar y sembrar son cosas distintas a
+propósito — el esquema se versiona, los datos de prueba no.
 
 ### Usuarios de desarrollo
 
