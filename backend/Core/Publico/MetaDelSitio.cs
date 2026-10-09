@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using AutomotoraSaaS.Core.Enums;
 
@@ -20,6 +21,10 @@ namespace AutomotoraSaaS.Core.Publico;
 /// <c>false</c> para lo que no tiene que aparecer en Google: el panel, una automotora que no
 /// existe, un vehículo que ya no está publicado.
 /// </param>
+/// <param name="DatosEstructurados">
+/// Objeto schema.org que va como JSON-LD, para que Google muestre la ficha con precio,
+/// año y kilómetros en el resultado de búsqueda.
+/// </param>
 public sealed record MetaDelSitio(
     string Titulo,
     string? Descripcion = null,
@@ -29,7 +34,8 @@ public sealed record MetaDelSitio(
     string? Color = null,
     string? Icono = null,
     bool Indexable = true,
-    string Tipo = "website");
+    string Tipo = "website",
+    object? DatosEstructurados = null);
 
 /// <summary>
 /// Arma las etiquetas de cada página y las mete en el <c>index.html</c> del frontend.
@@ -65,13 +71,38 @@ public static partial class PaginaDelSitio
             $"{nombre} {anio}, {kilometraje.ToString("N0", Uruguay)} km, {Etiqueta(combustible)}, " +
             $"{Etiqueta(transmision)}. {Precio(precio, moneda)}. Consultalo en {automotora}.";
 
+        var datos = new Dictionary<string, object?>
+        {
+            ["@context"] = "https://schema.org",
+            ["@type"] = "Car",
+            ["name"] = $"{nombre} {anio}",
+            ["description"] = descripcion,
+            ["url"] = url,
+            ["image"] = imagen,
+            ["brand"] = Tipo("Brand", ("name", marca)),
+            ["model"] = modelo,
+            ["vehicleModelDate"] = anio.ToString(CultureInfo.InvariantCulture),
+            ["mileageFromOdometer"] = Tipo("QuantitativeValue", ("value", kilometraje), ("unitCode", "KMT")),
+            ["fuelType"] = Etiqueta(combustible),
+            ["vehicleTransmission"] = Etiqueta(transmision),
+            ["itemCondition"] = kilometraje > 0 ? "https://schema.org/UsedCondition" : "https://schema.org/NewCondition",
+            ["offers"] = Tipo(
+                "Offer",
+                ("price", precio),
+                ("priceCurrency", moneda == Moneda.Usd ? "USD" : "UYU"),
+                ("availability", "https://schema.org/InStock"),
+                ("url", url),
+                ("seller", Tipo("AutoDealer", ("name", automotora)))),
+        };
+
         return new MetaDelSitio(
             $"{titulo} — {automotora}",
             descripcion,
             imagen,
             url,
             automotora,
-            Tipo: "product");
+            Tipo: "product",
+            DatosEstructurados: datos);
     }
 
     public static MetaDelSitio DeAutomotora(string automotora, string? direccion, int publicados, string? imagen, string url)
@@ -84,12 +115,23 @@ public static partial class PaginaDelSitio
             _ => $"Mirá los {publicados.ToString("N0", Uruguay)} vehículos disponibles",
         };
 
+        var datos = new Dictionary<string, object?>
+        {
+            ["@context"] = "https://schema.org",
+            ["@type"] = "AutoDealer",
+            ["name"] = automotora,
+            ["url"] = url,
+            ["image"] = imagen,
+            ["address"] = direccion is { Length: > 0 } ? direccion : null,
+        };
+
         return new MetaDelSitio(
             $"{automotora} — Autos en venta",
             $"{cuantos} de {automotora}{donde}. Filtrá por marca, año y precio, y consultá por WhatsApp.",
             imagen,
             url,
-            automotora);
+            automotora,
+            DatosEstructurados: datos);
     }
 
     public static string Precio(decimal precio, Moneda moneda)
@@ -141,6 +183,17 @@ public static partial class PaginaDelSitio
             html.Append("\n    <link rel=\"canonical\" href=\"").Append(Cod(meta.Url)).Append("\" />");
         }
 
+        if (meta.DatosEstructurados is not null && meta.Indexable)
+        {
+            // El serializador por defecto escapa <, > y & como <, > y &: ni
+            // un "</script>" en el nombre de la automotora puede cerrar el bloque. Los
+            // navegadores no ejecutan este tipo de script, así que la política de contenido
+            // no lo frena.
+            html.Append("\n    <script type=\"application/ld+json\">")
+                .Append(JsonSerializer.Serialize(meta.DatosEstructurados, OpcionesDeJsonLd))
+                .Append("</script>");
+        }
+
         var resultado = TituloDeLaPlantilla().Replace(plantilla, _ => html.ToString(), 1);
 
         if (meta.Icono is { Length: > 0 } icono)
@@ -164,6 +217,27 @@ public static partial class PaginaDelSitio
     }
 
     private static string Cod(string valor) => WebUtility.HtmlEncode(valor);
+
+    /// <summary>
+    /// Un objeto schema.org. Con diccionario y no con un tipo anónimo: en C#, <c>@type</c>
+    /// es solo <c>type</c> escapado, y saldría sin la arroba.
+    /// </summary>
+    private static Dictionary<string, object?> Tipo(string tipo, params (string Clave, object? Valor)[] campos)
+    {
+        var objeto = new Dictionary<string, object?> { ["@type"] = tipo };
+
+        foreach (var (clave, valor) in campos)
+        {
+            objeto[clave] = valor;
+        }
+
+        return objeto;
+    }
+
+    private static readonly JsonSerializerOptions OpcionesDeJsonLd = new()
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
 
     [GeneratedRegex("<title>.*?</title>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex TituloDeLaPlantilla();

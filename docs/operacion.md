@@ -26,13 +26,17 @@ acordarse de los pasos.
 
 ### Semana 2 — identidad y stock
 
-- [ ] Con el dueño, subir el logo y completar lo que falte en **Configuración**.
+- [ ] Con el dueño, subir el logo y completar lo que falte en **Configuración**. La
+      tarjeta *Primeros pasos* del tablero del dueño dice qué falta; cuando desaparece,
+      la identidad y el stock están completos.
 - [ ] **Carga inicial de stock:** Panel → Cobranza → abrir la automotora → *Carga inicial de
       stock*. Descargar la plantilla, completarla con la automotora, **Validar**, corregir
       lo que marque y recién ahí **Cargar**. Es todo o nada: si una fila falla no se carga
       ninguna.
 - [ ] Subir las fotos de cada unidad desde el panel (la carga por CSV no incluye fotos).
 - [ ] Si un modelo no está en el catálogo, darlo de alta en **Catálogo** antes de importar.
+      Los que la automotora pida desde el formulario del vehículo llegan a **Solicitudes**:
+      revisarlas a diario la primera semana.
 
 ### Semana 3 — revisión
 
@@ -40,7 +44,9 @@ acordarse de los pasos.
       WhatsApp con el mensaje armado, botón de llamada.
 - [ ] Compartir el link de una ficha por WhatsApp y comprobar que se vea la vista previa.
 - [ ] Dar de alta a los vendedores (respetando el tope de usuarios del plan).
-- [ ] Capacitación: hasta dos horas, más el instructivo escrito.
+- [ ] Capacitación: hasta dos horas, más el instructivo escrito
+      ([instructivo-para-automotoras.md](instructivo-para-automotoras.md)). Completar antes
+      los datos de soporte marcados **[decidir]**.
 
 ### Semana 4 — salida en vivo
 
@@ -144,3 +150,79 @@ app pool de IIS recicla cuando quiere.
 | `POST /api/jobs/precios-de-mercado` | Diaria |
 | `POST /api/jobs/avisos-de-vencimiento` | Diaria, a la mañana. Necesita `Correo:*` configurado; la respuesta dice cuántos avisos salieron y cuántos fallaron |
 | `POST /api/jobs/limpieza-de-analitica` | Semanal. Borra el detalle de visitas y búsquedas más viejo que `Analitica:MesesDeRetencion` (24 meses; nunca menos de 13) |
+
+---
+
+## 6. Monitoreo
+
+Dos cosas distintas: enterarse de que **algo falla** (un error en un endpoint) y enterarse
+de que **todo está caído** (el sitio no responde). Las dos antes que el cliente.
+
+### Errores — Sentry
+
+La API reporta a Sentry las excepciones no manejadas y los logs de nivel `Error`. Sin DSN
+configurado no reporta nada, que es lo que pasa en desarrollo y en los tests.
+
+- [ ] Crear una cuenta en [sentry.io](https://sentry.io) (el plan gratuito alcanza) y un
+      proyecto de tipo **ASP.NET Core**.
+- [ ] Copiar el DSN del proyecto a la configuración del servidor: `Sentry__Dsn` como
+      variable de entorno o `"Sentry": { "Dsn": "..." }` en `appsettings.Production.json`.
+- [ ] En Sentry, activar la alerta por correo de *issue nuevo*.
+- [ ] Verificar: forzar un error (por ejemplo, un job con la base apagada) y confirmar que
+      llega el correo.
+
+No viajan datos personales: ni IPs, ni usuarios, ni cuerpos de request
+(`SendDefaultPii = false`).
+
+### Caída — chequeo externo
+
+- [ ] Dar de alta un monitor HTTP en un servicio externo (UptimeRobot, Better Stack o
+      similar, todos con plan gratuito) contra `https://<dominio-del-saas>/api/health`,
+      cada 5 minutos, con aviso por correo y WhatsApp/Telegram.
+- [ ] Un monitor más por cada automotora con dominio propio, contra la home de su sitio:
+      es lo que se cae si el binding o el certificado del dominio fallan.
+
+`/api/health` responde 200 sin tocar la base: dice que la aplicación levantó, no que la
+base esté arriba. Una base caída la avisa Sentry, con el primer request que falle.
+
+---
+
+## 7. Primera puesta en producción
+
+Una sola vez, antes del primer cliente. Las versiones siguientes son solo los pasos 4 a 6.
+
+1. **Base:** crear la base MySQL desde el panel del hosting y aplicar el script de
+   migraciones (`dotnet dotnet-ef migrations script --idempotent`, ver el README). Trae el
+   catálogo base de marcas y modelos.
+2. **Bucket de fotos:** crear el bucket en R2, una clave de API con permiso de escritura
+   solo sobre ese bucket, y el dominio público del bucket (https).
+3. **Configuración del servidor**, por variables de entorno o en un
+   `appsettings.Production.json` que vive solo en el servidor (nunca en el repo):
+
+   | Clave | Qué va |
+   | --- | --- |
+   | `ASPNETCORE_ENVIRONMENT` | `Production` |
+   | `ConnectionStrings__Default` | La del panel del hosting |
+   | `Jwt__Secret` | Aleatoria, 32 caracteres o más |
+   | `Jobs__Secret` | Aleatoria; la misma va en el header `X-Job-Secret` del cron |
+   | `Storage__Provider` | `R2` |
+   | `Storage__PublicBaseUrl` | El dominio público del bucket, https y sin barra final |
+   | `Storage__Bucket`, `Storage__Endpoint`, `Storage__AccessKeyId`, `Storage__SecretAccessKey` | Los del paso 2 |
+   | `Deploy__IpsPublicas__0` | La IP del sitio en el hosting |
+   | `Correo__*` | **[decidir]** el servicio de SMTP |
+   | `Sentry__Dsn` | Sección 6 |
+
+   Con algo de las primeras siete filas mal, la API no arranca (500.30); el README,
+   sección *Publicar*, dice cómo ver qué falta. Las últimas tres solo dejan advertencias.
+4. `tools/publicar.ps1` y subir el contenido de `.publish/`.
+5. Abrir `https://<dominio-del-saas>/api/health` y entrar al panel con el SuperAdmin
+   (ver abajo cómo se crea el primero).
+6. Dar de alta los jobs en el cron externo (sección 5) y los monitores (sección 6), y
+   disparar cada job una vez a mano para ver que responde 200.
+
+**El primer SuperAdmin.** El seed solo corre en Development. En la base de producción se
+crea desde la configuración: poner `PrimerSuperAdmin__Email` y `PrimerSuperAdmin__Password`
+(10 caracteres o más, con letras y números), arrancar, entrar al panel —pide cambiar la
+contraseña— y **sacar las dos variables**. Solo actúan si la base no tiene ningún
+SuperAdmin: olvidadas ahí no crean otro ni pisan la contraseña, pero dejan una advertencia
+en el log en cada arranque.

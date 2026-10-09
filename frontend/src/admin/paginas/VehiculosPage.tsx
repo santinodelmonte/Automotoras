@@ -123,16 +123,35 @@ export function VehiculosPage() {
         </div>
       )}
 
-      {pagina && pagina.items.length === 0 && (
+      {pagina && pagina.items.length === 0 && (filtros.estado || filtros.texto) && (
+        <div className="panel-seccion">
+          <Estado titulo="No hay vehículos con esos filtros" detalle="Probá con otro estado o limpiando la búsqueda." />
+        </div>
+      )}
+
+      {/* El stock vacío de verdad es el primer día de una automotora: en vez de hablar de
+          filtros que nadie puso, ofrece las dos maneras de empezar. */}
+      {pagina && pagina.items.length === 0 && !filtros.estado && !filtros.texto && (
         <div className="panel-seccion">
           <Estado
-            titulo="No hay vehículos con esos filtros"
-            detalle="Probá limpiando la búsqueda, o cargá el primero."
+            titulo="Todavía no cargaste ningún vehículo"
+            detalle={
+              esOwner
+                ? 'Cargalos de a uno, o todos juntos con la planilla. Lo que quede Disponible aparece en tu sitio al instante.'
+                : 'Cargá el primero. Lo que quede Disponible aparece en el sitio al instante.'
+            }
           >
-            <Link to="/admin/vehiculos/nuevo" className="panel-boton mt-2">
-              <Plus aria-hidden className="size-4" />
-              Cargar vehículo
-            </Link>
+            <div className="mt-2 flex flex-wrap justify-center gap-2">
+              <Link to="/admin/vehiculos/nuevo" className="panel-boton">
+                <Plus aria-hidden className="size-4" />
+                Cargar vehículo
+              </Link>
+              {esOwner && (
+                <Link to="/admin/plan#importar" className="panel-boton-secundario">
+                  Importar planilla
+                </Link>
+              )}
+            </div>
           </Estado>
         </div>
       )}

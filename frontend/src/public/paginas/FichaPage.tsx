@@ -209,7 +209,7 @@ export function FichaPage() {
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => contactar('ClickWhatsapp')}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-4 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-700 hover:shadow-md active:scale-[0.99]"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-6 py-4 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-800 hover:shadow-md active:scale-[0.99]"
                 >
                   <IconoWhatsapp className="size-5" />
                   Consultar por WhatsApp

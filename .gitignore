@@ -57,3 +57,8 @@ pnpm-debug.log*
 *.sw?
 .DS_Store
 Thumbs.db
+
+## Tests de punta a punta
+.e2e/
+test-results/
+playwright-report/

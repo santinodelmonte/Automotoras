@@ -67,7 +67,7 @@ export function Cabecera({ tenant, base }: Props) {
               href={linkDeWhatsapp(tenant.whatsapp, `Hola ${tenant.nombre}, quería hacer una consulta.`)}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:px-4"
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 sm:px-4"
             >
               <IconoWhatsapp className="size-4" />
               <span className="sr-only sm:not-sr-only">WhatsApp</span>

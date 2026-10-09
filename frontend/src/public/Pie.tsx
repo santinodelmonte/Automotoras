@@ -95,9 +95,14 @@ export function Pie({ tenant, base }: Props) {
       </div>
 
       <div className="border-t border-white/10">
-        <p className="mx-auto max-w-7xl px-4 py-6 text-xs text-slate-500 sm:px-6">
-          © {new Date().getFullYear()} {tenant.nombre}
-        </p>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-xs text-slate-400 sm:px-6">
+          <p>
+            © {new Date().getFullYear()} {tenant.nombre}
+          </p>
+          <Link to={`${base}/privacidad`} viewTransition className="transition hover:text-white">
+            Privacidad
+          </Link>
+        </div>
       </div>
     </footer>
   )

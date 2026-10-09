@@ -8,6 +8,7 @@ import { Tarjeta } from '@shared/ui/Tarjeta'
 import { entero } from '@shared/ui/formato'
 import type { Dashboard, EstadoVehiculo } from '@shared/api/types'
 import { Pagina, Seccion } from '@admin/ui/Pagina'
+import { PrimerosPasos } from '@admin/PrimerosPasos'
 
 const COLOR_DE_ESTADO: Record<EstadoVehiculo, string> = {
   Disponible: 'bg-emerald-500',
@@ -68,6 +69,8 @@ export function DashboardPage() {
 
   return (
     <Pagina {...encabezado}>
+      <PrimerosPasos datos={tablero.primerosPasos} />
+
       <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Tarjeta titulo="Vehículos" valor={entero(tablero.totalDeVehiculos)} nota="En el stock, de todos los estados" icono={Car} />
         <Tarjeta

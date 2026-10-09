@@ -36,6 +36,19 @@ public static class DependencyInjection
     public const string ClaveDeVersion = "Database:ServerVersion";
 
     /// <summary>
+    /// <c>Sqlite</c> para una base descartable: la de los tests de punta a punta, que se
+    /// crea y se siembra en cada corrida. Cualquier otro valor, o ninguno, es MySQL.
+    /// </summary>
+    /// <remarks>
+    /// Solo se acepta en Development (lo verifica <c>Program</c>): las migraciones son de
+    /// MySQL y una base de producción en SQLite no tendría esquema.
+    /// </remarks>
+    public const string ClaveDeProveedor = "Database:Proveedor";
+
+    public static bool EsSqlite(IConfiguration configuration)
+        => string.Equals(configuration?[ClaveDeProveedor], "Sqlite", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Traduce el valor configurado a la versión con la que Pomelo genera el SQL.
     /// </summary>
     /// <remarks>
@@ -122,6 +135,12 @@ public static class DependencyInjection
                     "variable de entorno (ConnectionStrings__Default) o en " +
                     "appsettings.Development.json. La forma esperada está en " +
                     "appsettings.Example.json.");
+            }
+
+            if (EsSqlite(configuration))
+            {
+                options.UseSqlite(connectionString).UseSnakeCaseNamingConvention();
+                return;
             }
 
             options

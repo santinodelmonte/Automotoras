@@ -185,6 +185,9 @@ export function ListadoPage() {
 
           {!error && pagina && pagina.items.length > 0 && (
             <>
+              {/* Invisible, para los lectores de pantalla: las tarjetas llevan h3 y sin un h2
+                  en el medio la jerarquía salta del título de la página a cada auto. */}
+              <h2 className="sr-only">Resultados</h2>
               <div
                 className={`grid gap-5 transition-opacity duration-300 sm:grid-cols-2 xl:grid-cols-3 ${
                   cargando ? 'opacity-50' : ''
@@ -353,7 +356,7 @@ function SinResultados({
             )}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800"
           >
             <IconoWhatsapp className="size-4" />
             Avisame cuando entre

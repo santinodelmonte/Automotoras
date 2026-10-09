@@ -30,4 +30,24 @@ public sealed record DashboardDto(
     int ConsultasUltimos30Dias,
     int BusquedasSinResultadoUltimos30Dias,
     int DiasEnGondolaPromedio,
-    IReadOnlyList<VehiculoMasVistoDto> MasVistos);
+    IReadOnlyList<VehiculoMasVistoDto> MasVistos,
+    PrimerosPasosDto PrimerosPasos);
+
+/// <summary>
+/// Lo que le falta a una automotora recién dada de alta para que su sitio salga bien.
+/// </summary>
+/// <remarks>
+/// Se calcula de los datos y no se marca a mano: un paso está hecho cuando el sitio lo
+/// muestra, no cuando alguien tocó "listo". Cuando están todos, el panel deja de mostrarlo.
+/// </remarks>
+/// <param name="Slug">Para armar el link al sitio en el último paso.</param>
+/// <param name="DominioCustom">El dominio verificado, si tiene; si no, se usa el slug.</param>
+public sealed record PrimerosPasosDto(
+    bool TieneLogo,
+    bool TieneColor,
+    bool TieneWhatsapp,
+    int VehiculosPublicados,
+    int PublicadosSinFotos,
+    int Vendedores,
+    string Slug,
+    string? DominioCustom);

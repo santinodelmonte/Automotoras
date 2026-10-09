@@ -43,7 +43,7 @@ export function BarraDeContacto({ precio, linkDeWhatsapp, telefono, onContactar 
             target="_blank"
             rel="noreferrer"
             onClick={() => onContactar('ClickWhatsapp')}
-            className="inline-flex h-12 shrink-0 items-center gap-2 rounded-2xl bg-emerald-600 px-5 font-semibold text-white shadow-sm transition active:scale-95"
+            className="inline-flex h-12 shrink-0 items-center gap-2 rounded-2xl bg-emerald-700 px-5 font-semibold text-white shadow-sm transition active:scale-95"
           >
             <IconoWhatsapp className="size-5" />
             WhatsApp

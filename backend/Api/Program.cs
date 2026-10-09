@@ -1,8 +1,10 @@
 using System.Text;
 using System.Threading.RateLimiting;
+using AutomotoraSaaS.Api.Configuracion;
 using AutomotoraSaaS.Api.Controllers;
 using AutomotoraSaaS.Api.Filters;
 using AutomotoraSaaS.Api.MultiTenancy;
+using AutomotoraSaaS.Api.Seguridad;
 using AutomotoraSaaS.Api.Sitio;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Infrastructure;
@@ -12,6 +14,7 @@ using FluentValidation;
 using AutomotoraSaaS.Infrastructure.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -24,6 +27,20 @@ var builder = WebApplication.CreateBuilder(args);
 // appsettings + variables de entorno. Nada hardcodeado: en SmarterASP.NET los valores
 // reales llegan por variables de entorno / appsettings.Production.json fuera del repo.
 builder.Configuration.AddEnvironmentVariables();
+
+// Los errores no manejados y los logs de nivel Error van a Sentry, para enterarse de una
+// falla en producción antes de que avise el cliente. Sin Sentry:Dsn queda apagado, que es
+// lo que pasa en desarrollo y en los tests. Sin datos personales: ni IPs, ni usuarios, ni
+// cuerpos de request, por la misma regla que la analítica del sitio.
+builder.WebHost.UseSentry(opciones =>
+{
+    opciones.SendDefaultPii = false;
+    opciones.MaxRequestBodySize = Sentry.Extensibility.RequestSize.None;
+    opciones.Environment = builder.Environment.EnvironmentName;
+});
+
+// Sin "Server: Kestrel": no le dice nada útil a nadie salvo a quien busca qué atacar.
+builder.WebHost.ConfigureKestrel(opciones => opciones.AddServerHeader = false);
 
 const string FrontendCorsPolicy = "FrontendCors";
 
@@ -101,6 +118,15 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
         }));
 
+    options.AddPolicy(LimitesDeErroresDelCliente.Politica, contexto => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: contexto.Connection.RemoteIpAddress?.ToString() ?? "sin-ip",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = LimitesDeErroresDelCliente.ErroresPorVentana,
+            Window = LimitesDeErroresDelCliente.Ventana,
+            QueueLimit = 0,
+        }));
+
     var loginsPorMinuto = builder.Configuration.GetValue(
         "Seguridad:LoginsPorMinutoPorIp", LimitesDeLogin.LoginsPorMinutoPorDefecto);
 
@@ -124,6 +150,33 @@ builder.Services.AddRateLimiter(options =>
         return ValueTask.CompletedTask;
     };
 });
+
+// Comprimido, el bundle del frontend pesa un tercio: es lo que más le cambia la primera
+// carga a quien abre el link de un auto desde WhatsApp con 4G. Solo texto que no lleva
+// secretos —páginas, scripts, estilos, sitemap—; las respuestas JSON de la API no, porque
+// llevan tokens y comprimirlas sobre HTTPS las expone a BREACH.
+builder.Services.AddResponseCompression(opciones =>
+{
+    opciones.EnableForHttps = true;
+    opciones.Providers.Add<BrotliCompressionProvider>();
+    opciones.Providers.Add<GzipCompressionProvider>();
+    opciones.MimeTypes =
+    [
+        "text/html",
+        "text/css",
+        "text/javascript",
+        "application/javascript",
+        "text/plain",
+        "application/xml",
+        "text/xml",
+        "image/svg+xml",
+    ];
+});
+
+// El nivel por defecto es el más rápido, y con ese el bundle salía más pesado en Brotli
+// que en gzip. Optimal sigue siendo barato para archivos de este tamaño.
+builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Optimal);
+builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Optimal);
 
 // Errores en formato ProblemDetails, uno solo para toda la API: los que devuelven los
 // controllers, los que genera el binding y los que salen de una excepción no manejada.
@@ -164,19 +217,53 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<PlantillaDelSitio>();
 
+if (DependencyInjection.EsSqlite(builder.Configuration) && !builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        "Database:Proveedor=Sqlite es solo para la base descartable de los tests de punta a punta, en Development.");
+}
+
 var app = builder.Build();
 
+if (app.Environment.IsProduction())
+{
+    VerificacionDeProduccion.Aplicar(app.Configuration, app.Logger);
+}
+
 app.UseExceptionHandler();
+
+// Antes que todo lo que puede responder —archivos, fallback del sitio, la API— para que
+// ninguna respuesta salga sin ellos.
+app.UseHeadersDeSeguridad(app.Configuration);
+
+app.UseResponseCompression();
+
+// HSTS solo viaja en respuestas HTTPS: un dominio propio que todavía no tiene certificado
+// sigue andando por HTTP. Sin includeSubDomains por lo mismo.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 
+    // La base descartable de los tests de punta a punta no tiene migraciones: se crea del
+    // modelo, como en los tests de integración, y después se siembra como cualquier otra.
+    if (DependencyInjection.EsSqlite(app.Configuration))
+    {
+        using var scope = app.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
+    }
+
     // Bloqueante a propósito: mantiene el Main sincrónico, y lo único que se demora es
     // el arranque de desarrollo mientras se siembra una vez.
     SembrarDesarrolloAsync(app).GetAwaiter().GetResult();
 }
+
+CrearPrimerSuperAdminAsync(app).GetAwaiter().GetResult();
 
 ServirImagenesLocales(app);
 
@@ -243,6 +330,50 @@ static void ServirImagenesLocales(WebApplication app)
         // Sin ServeUnknownFileTypes: solo salen los tipos conocidos. Lo que se guarda ya
         // pasó por la validación de firma, y esto es el segundo cerrojo.
     });
+}
+
+// El primer SuperAdmin de una base nueva, desde PrimerSuperAdmin:* (ver PrimerSuperAdmin).
+// Si falla —la base no responde, la contraseña no alcanza— la API arranca igual: el sitio
+// público no depende de esto, y el motivo queda en el log y en Sentry.
+static async Task CrearPrimerSuperAdminAsync(WebApplication app)
+{
+    var seccion = app.Configuration.GetSection(PrimerSuperAdmin.Seccion);
+    var email = seccion["Email"];
+    var password = seccion["Password"];
+
+    if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(password))
+    {
+        return;
+    }
+
+    using var scope = app.Services.CreateScope();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(PrimerSuperAdmin));
+
+    try
+    {
+        var resultado = await PrimerSuperAdmin
+            .AsegurarAsync(
+                scope.ServiceProvider.GetRequiredService<AppDbContext>(),
+                scope.ServiceProvider.GetRequiredService<IPasswordHasher>(),
+                email,
+                password)
+            .ConfigureAwait(false);
+
+        if (resultado == PrimerSuperAdmin.Resultado.Creado)
+        {
+            logger.LogWarning(
+                "SuperAdmin {Email} creado con contraseña provisoria. Sacá las variables PrimerSuperAdmin__* del servidor.",
+                email);
+        }
+        else
+        {
+            logger.LogWarning("Ya hay un SuperAdmin: PrimerSuperAdmin__* se ignora. Sacá esas variables del servidor.");
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "No se pudo crear el primer SuperAdmin. La API arranca igual.");
+    }
 }
 
 // Siembra las automotoras y el catálogo de desarrollo. Solo corre en Development y solo

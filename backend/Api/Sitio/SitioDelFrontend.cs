@@ -160,6 +160,17 @@ public static partial class SitioDelFrontend
                     url);
             }
         }
+        else if (!RutaConocida().IsMatch(ruta.Value ?? "/"))
+        {
+            // Una dirección que el sitio no tiene. Antes salía la portada con 200, y un link
+            // roto quedaba indexado como una copia de la home.
+            meta = new MetaDelSitio($"Página no encontrada — {tenant.Nombre}", Indexable: false);
+            estado = StatusCodes.Status404NotFound;
+        }
+        else if (ruta.StartsWithSegments("/privacidad", StringComparison.OrdinalIgnoreCase))
+        {
+            meta = new MetaDelSitio($"Privacidad — {tenant.Nombre}", Url: url, SitioNombre: tenant.Nombre, Indexable: false);
+        }
         else
         {
             var publicados = await disponibles.CountAsync(cancellationToken).ConfigureAwait(false);
@@ -217,4 +228,8 @@ public static partial class SitioDelFrontend
 
     [GeneratedRegex(@"^/vehiculos/(\d{1,9})/?$")]
     private static partial Regex RutaDeFicha();
+
+    /// <summary>Las páginas que tiene el sitio público, además de la ficha. Tiene que coincidir con las rutas de <c>App.tsx</c>.</summary>
+    [GeneratedRegex(@"^/(vehiculos/?|privacidad/?)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex RutaConocida();
 }

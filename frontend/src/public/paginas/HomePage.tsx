@@ -276,7 +276,7 @@ function SinStock({ tenant }: { tenant: TenantPublico }) {
           href={linkDeWhatsapp(tenant.whatsapp, 'Hola, estoy buscando un auto: ')}
           target="_blank"
           rel="noreferrer"
-          className="mt-8 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-semibold text-white transition hover:bg-emerald-700"
+          className="mt-8 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-6 py-3 font-semibold text-white transition hover:bg-emerald-800"
         >
           <IconoWhatsapp className="size-5" />
           Escribinos por WhatsApp

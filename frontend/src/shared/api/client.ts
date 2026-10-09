@@ -266,6 +266,35 @@ export function guardarArchivo(contenido: Blob, nombre: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+let erroresReportados = 0
+
+/**
+ * Manda a la API un error del navegador, que lo registra y llega a Sentry con el resto.
+ *
+ * Nunca falla ni espera: reportar un error no puede causar otro. Tope de cinco por carga
+ * de página, para que un error que se repite en cada render no mande cientos. Solo el
+ * camino de la URL, sin la query: la API no guarda datos de la visita.
+ */
+export function reportarError(error: unknown, componentes?: string) {
+  if (erroresReportados >= 5) return
+  erroresReportados++
+
+  const mensaje = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+  const pila = error instanceof Error ? error.stack : undefined
+
+  fetch(`${baseUrl}/api/errores-del-cliente`, {
+    method: 'POST',
+    keepalive: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mensaje: mensaje.slice(0, 500),
+      pila: pila?.slice(0, 4000),
+      componentes: componentes?.slice(0, 2000),
+      ruta: window.location.pathname.slice(0, 300),
+    }),
+  }).catch(() => undefined)
+}
+
 /**
  * En desarrollo el tenant del sitio público viaja como prefijo de la ruta. En producción,
  * cuando cada automotora entra por su dominio, el prefijo sobra y el servidor resuelve el

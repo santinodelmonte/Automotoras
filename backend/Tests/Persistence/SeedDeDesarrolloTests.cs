@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Planes;
 using AutomotoraSaaS.Core.Vehiculos;
@@ -223,18 +224,26 @@ public sealed class SeedDeDesarrolloTests : IDisposable
         Assert.Equal([3, 4, 5, 6, 7], malo.Errores.Select(e => e.Fila).Distinct().Order());
     }
 
-    private static string Ejemplo(string nombre)
+    // Se busca desde los binarios y, si se compiló con --artifacts-path fuera del repo,
+    // desde este mismo archivo fuente.
+    private static string Ejemplo(string nombre, [CallerFilePath] string fuente = "")
     {
-        var carpeta = new DirectoryInfo(AppContext.BaseDirectory);
+        var raiz = RaizDelRepo(AppContext.BaseDirectory) ?? RaizDelRepo(Path.GetDirectoryName(fuente))
+            ?? throw new InvalidOperationException("No se encontró la raíz del repo.");
+
+        return File.ReadAllText(Path.Combine(raiz, "docs", "ejemplos", nombre));
+    }
+
+    private static string? RaizDelRepo(string? desde)
+    {
+        var carpeta = string.IsNullOrEmpty(desde) ? null : new DirectoryInfo(desde);
 
         while (carpeta is not null && !File.Exists(Path.Combine(carpeta.FullName, "AutomotoraSaaS.sln")))
         {
             carpeta = carpeta.Parent;
         }
 
-        return File.ReadAllText(Path.Combine(
-            carpeta?.FullName ?? throw new InvalidOperationException("No se encontró la raíz del repo."),
-            "docs", "ejemplos", nombre));
+        return carpeta?.FullName;
     }
 
     public void Dispose()

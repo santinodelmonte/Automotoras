@@ -168,6 +168,23 @@ globales y la política de escritura. Los de integración levantan la API entera
 diferencia importa — "la consulta filtra bien" y "el endpoint responde 404" no son lo
 mismo, y lo único que le consta a quien está del otro lado es lo segundo.
 
+#### De punta a punta
+
+```bash
+cd frontend
+npm run e2e
+```
+
+Playwright levanta la aplicación como en producción (`e2e/servidor.mjs`): compila el
+frontend, lo sirve desde la API en un solo origen con los headers de seguridad reales, y
+usa una base SQLite descartable que se borra y se siembra en cada corrida. No necesita
+MySQL ni toca la configuración local. Corre con el Edge instalado; en una máquina sin Edge,
+`E2E_NAVEGADOR=chromium` y `npx playwright install chromium`. Lo que escribe queda en
+`.e2e/`, ignorado por git.
+
+Cubre el recorrido del comprador (en escritorio y en celular) y el alta de una automotora
+hasta su primer vehículo publicado.
+
 ### Migraciones
 
 ```bash
@@ -559,6 +576,16 @@ el color y el ícono de la automotora —y en la ficha, los del vehículo— ya 
 compartido por WhatsApp aparezca con su foto y su precio: WhatsApp no ejecuta JavaScript.
 Un vehículo vendido o una automotora que no existe responden 404 con `noindex`; una
 suspendida, 503.
+
+**En Production la API no arranca con la configuración incompleta**
+([`VerificacionDeProduccion`](backend/Api/Configuracion/VerificacionDeProduccion.cs)):
+sin connection string, sin `Jwt__Secret` de 32 caracteres, con `Storage__Provider` en
+`Local` o una `Storage__PublicBaseUrl` que no sea https pública, o sin `Jobs__Secret`, el
+sitio responde 500.30. Para ver qué falta, en el `web.config` del servidor poner
+`stdoutLogEnabled="true"` (con `stdoutLogFile=".\logs\stdout"` y la carpeta `logs`
+creada), recargar, leer el log y volver a apagarlo: escribe todo lo que la API loguea y
+crece sin límite. Sin correo, sin `Deploy__IpsPublicas` o sin Sentry arranca igual y lo
+deja como advertencia en el log.
 
 Antes de subir una versión con migraciones nuevas, el SQL se genera con
 `migrations script --idempotent` (ver [Migraciones](#migraciones)) y se aplica desde el

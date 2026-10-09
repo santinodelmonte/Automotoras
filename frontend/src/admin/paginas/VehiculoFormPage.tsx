@@ -9,6 +9,7 @@ import { GaleriaDeFotos } from '@admin/GaleriaDeFotos'
 import { CambiarEstado } from '@admin/CambiarEstado'
 import { Aviso, Campo, Pagina, Seccion } from '@admin/ui/Pagina'
 import { EntradaNumerica } from '@admin/ui/EntradaNumerica'
+import { PedidoDeModelo } from '@admin/PedidoDeModelo'
 import type {
   GuardarVehiculoRequest,
   Marca,
@@ -239,28 +240,40 @@ export function VehiculoFormPage() {
             </select>
           </Campo>
 
-          <Campo etiqueta="Modelo" errores={errores.ModeloId}>
-            <select
-              required
-              value={datos.modeloId || ''}
-              disabled={!marcaId}
-              onChange={(e) =>
-                setDatos((previos) => ({
-                  ...previos,
-                  modeloId: Number(e.target.value),
-                  versionId: null,
-                }))
-              }
-              className="panel-entrada"
-            >
-              <option value="">Elegí un modelo</option>
-              {modelos.map((modelo) => (
-                <option key={modelo.id} value={modelo.id}>
-                  {modelo.nombre}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          {/* El pedido va afuera del Campo: el Campo es un <label>, y con dos controles
+              adentro tocar el texto del pedido abriría el select. */}
+          <div>
+            <Campo etiqueta="Modelo" errores={errores.ModeloId}>
+              <select
+                required
+                value={datos.modeloId || ''}
+                disabled={!marcaId}
+                onChange={(e) =>
+                  setDatos((previos) => ({
+                    ...previos,
+                    modeloId: Number(e.target.value),
+                    versionId: null,
+                  }))
+                }
+                className="panel-entrada"
+              >
+                <option value="">Elegí un modelo</option>
+                {modelos.map((modelo) => (
+                  <option key={modelo.id} value={modelo.id}>
+                    {modelo.nombre}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+            {marcaId > 0 && opciones && (
+              <PedidoDeModelo
+                key={marcaId}
+                marcaId={marcaId}
+                marca={marcas.find((marca) => marca.id === marcaId)?.nombre ?? ''}
+                carrocerias={opciones.carrocerias}
+              />
+            )}
+          </div>
 
           <Campo etiqueta="Versión (opcional)">
             <select

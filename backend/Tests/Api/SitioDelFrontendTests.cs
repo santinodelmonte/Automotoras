@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using AutomotoraSaaS.Core.Publico;
 
 namespace AutomotoraSaaS.Tests.Api;
@@ -125,5 +126,91 @@ public sealed class SitioDelFrontendTests : IClassFixture<FabricaDeApi>
 
         Assert.DoesNotContain("<script>", html, StringComparison.Ordinal);
         Assert.Contains("&lt;script&gt;", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>Un link roto no puede quedar indexado como una copia de la portada.</summary>
+    [Fact]
+    public async Task Una_direccion_que_el_sitio_no_tiene_responde_404()
+    {
+        using var cliente = _api.CreateClient();
+
+        var respuesta = await cliente.GetAsync("/t/norte/no-existe");
+        var html = await respuesta.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, respuesta.StatusCode);
+        Assert.Contains("noindex", html, StringComparison.Ordinal);
+        Assert.Contains("no encontrada — ", System.Net.WebUtility.HtmlDecode(html), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("/t/norte/")]
+    [InlineData("/t/norte/vehiculos")]
+    [InlineData("/t/norte/vehiculos/")]
+    [InlineData("/t/norte/privacidad")]
+    public async Task Las_paginas_del_sitio_responden_200(string ruta)
+    {
+        using var cliente = _api.CreateClient();
+
+        var respuesta = await cliente.GetAsync(ruta);
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+    }
+
+    /// <summary>La ficha lleva los datos estructurados que lee Google: precio, año, kilómetros.</summary>
+    [Fact]
+    public async Task La_ficha_lleva_los_datos_estructurados_del_vehiculo()
+    {
+        using var cliente = _api.CreateClient();
+
+        var html = await cliente.GetStringAsync($"/t/norte/vehiculos/{_api.VehiculoDeNorte}");
+
+        var inicio = html.IndexOf("<script type=\"application/ld+json\">", StringComparison.Ordinal);
+        Assert.True(inicio >= 0, "La ficha no tiene JSON-LD.");
+
+        var contenido = html[(html.IndexOf('>', inicio) + 1)..html.IndexOf("</script>", inicio, StringComparison.Ordinal)];
+        using var json = System.Text.Json.JsonDocument.Parse(contenido);
+        var raiz = json.RootElement;
+
+        Assert.Equal("Car", raiz.GetProperty("@type").GetString());
+        Assert.Equal("Volkswagen", raiz.GetProperty("brand").GetProperty("name").GetString());
+        Assert.Equal("Offer", raiz.GetProperty("offers").GetProperty("@type").GetString());
+        Assert.True(raiz.GetProperty("offers").GetProperty("price").GetDecimal() > 0);
+    }
+
+    /// <summary>Un "&lt;/script&gt;" en el nombre de la automotora no puede cerrar el bloque de JSON-LD.</summary>
+    [Fact]
+    public void Los_datos_estructurados_no_se_pueden_cerrar_desde_adentro()
+    {
+        var meta = PaginaDelSitio.DeAutomotora("</script><script>alert(1)</script>", null, 3, null, "https://x.uy");
+
+        var html = PaginaDelSitio.Renderizar("<head><title>x</title></head>", meta);
+
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "</script>"));
+        Assert.DoesNotContain("<script>alert", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>Lo que no se indexa tampoco describe nada para Google.</summary>
+    [Fact]
+    public async Task Un_vehiculo_vendido_no_lleva_datos_estructurados()
+    {
+        using var cliente = _api.CreateClient();
+
+        var respuesta = await cliente.GetAsync($"/t/norte/vehiculos/{_api.VendidoDeNorte}");
+        var html = await respuesta.Content.ReadAsStringAsync();
+
+        Assert.DoesNotContain("application/ld+json", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>Los errores del navegador se aceptan sin sesión: el comprador no tiene cuenta.</summary>
+    [Fact]
+    public async Task Un_error_del_navegador_se_acepta_sin_sesion()
+    {
+        using var cliente = _api.CreateClient();
+
+        var respuesta = await cliente.PostAsJsonAsync(
+            "/api/errores-del-cliente",
+            new { mensaje = "TypeError: x is undefined", pila = "at Ficha", ruta = "/vehiculos/1" });
+
+        Assert.Equal(HttpStatusCode.Accepted, respuesta.StatusCode);
     }
 }

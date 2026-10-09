@@ -2,6 +2,7 @@ using AutomotoraSaaS.Core.Analitica;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Dashboard;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Vehiculos;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -34,11 +35,13 @@ public sealed class DashboardController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly TimeProvider _reloj;
+    private readonly ITenantContext _tenantContext;
 
-    public DashboardController(AppDbContext db, TimeProvider reloj)
+    public DashboardController(AppDbContext db, TimeProvider reloj, ITenantContext tenantContext)
     {
         _db = db;
         _reloj = reloj;
+        _tenantContext = tenantContext;
     }
 
     [HttpGet]
@@ -81,6 +84,8 @@ public sealed class DashboardController : ControllerBase
             ? 0
             : (int)Math.Round(publicaciones.Average(f => MapeosDeVehiculo.DiasEnGondola(f, null, ahora)));
 
+        var primerosPasos = await PrimerosPasosAsync(cancellationToken).ConfigureAwait(false);
+
         return Ok(new DashboardDto(
             porEstado
                 .Select(g => new ConteoPorEstadoDto(g.Estado.ToString(), g.Cantidad))
@@ -91,7 +96,41 @@ public sealed class DashboardController : ControllerBase
             consultas,
             sinResultado,
             promedio,
-            masVistos));
+            masVistos,
+            primerosPasos));
+    }
+
+    private async Task<PrimerosPasosDto> PrimerosPasosAsync(CancellationToken cancellationToken)
+    {
+        var tenant = await _db.Tenants
+            .Where(t => t.Id == _tenantContext.TenantId)
+            .Select(t => new { t.Slug, t.LogoUrl, t.ColorPrimario, t.Whatsapp, t.DominioCustom, t.DominioVerificadoEn })
+            .FirstAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var disponibles = _db.Vehiculos.Where(v => v.Estado == EstadoVehiculo.Disponible);
+
+        var publicados = await disponibles.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        // Una unidad sin fotos en el sitio casi no recibe consultas: es lo primero que se
+        // saltea quien mira el listado.
+        var sinFotos = await disponibles
+            .CountAsync(v => !v.Fotos.Any(), cancellationToken)
+            .ConfigureAwait(false);
+
+        var vendedores = await _db.Users
+            .CountAsync(u => u.Rol == RolUsuario.Seller && u.Activo, cancellationToken)
+            .ConfigureAwait(false);
+
+        return new PrimerosPasosDto(
+            !string.IsNullOrWhiteSpace(tenant.LogoUrl),
+            !string.IsNullOrWhiteSpace(tenant.ColorPrimario),
+            !string.IsNullOrWhiteSpace(tenant.Whatsapp),
+            publicados,
+            sinFotos,
+            vendedores,
+            tenant.Slug,
+            tenant.DominioVerificadoEn is not null ? tenant.DominioCustom : null);
     }
 
     /// <summary>

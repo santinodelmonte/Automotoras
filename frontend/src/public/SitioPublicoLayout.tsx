@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { api, ApiError } from '@shared/api/client'
 import { Estado } from '@shared/ui/Estado'
@@ -115,7 +115,11 @@ export function SitioPublicoLayout() {
         <Cabecera tenant={carga.tenant} base={base} />
 
         <main className="flex-1">
-          <Outlet />
+          {/* Mientras llega una página diferida, la cabecera y el pie se quedan: solo el
+              medio espera, con su alto, para que el pie no suba y vuelva a bajar. */}
+          <Suspense fallback={<div className="min-h-screen" />}>
+            <Outlet />
+          </Suspense>
         </main>
 
         <Pie tenant={carga.tenant} base={base} />

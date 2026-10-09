@@ -1,11 +1,10 @@
 import { lazy, Suspense, type ComponentType } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { SitioPublicoLayout } from '@public/SitioPublicoLayout'
-import { FichaPage } from '@public/paginas/FichaPage'
 import { HomePage } from '@public/paginas/HomePage'
-import { ListadoPage } from '@public/paginas/ListadoPage'
 import { RutaProtegida } from '@shared/auth/RutaProtegida'
 import { Estado } from '@shared/ui/Estado'
+import { LimiteDeErrores } from '@shared/ui/LimiteDeErrores'
 
 /**
  * Una pantalla que se descarga recién cuando alguien entra a ella.
@@ -21,6 +20,14 @@ function diferida<K extends string, M extends Record<K, ComponentType>>(
 ) {
   return lazy(async () => ({ default: (await cargar())[nombre] }))
 }
+
+// Del sitio público, solo la portada va en el bundle inicial. El listado y la ficha pesan
+// (filtros, galería, carrusel) y quien entra a la home no los necesita todavía; quien
+// entra directo a una ficha desde WhatsApp baja la ficha y no el listado.
+const ListadoPage = diferida(() => import('@public/paginas/ListadoPage'), 'ListadoPage')
+const FichaPage = diferida(() => import('@public/paginas/FichaPage'), 'FichaPage')
+const PrivacidadPage = diferida(() => import('@public/paginas/PrivacidadPage'), 'PrivacidadPage')
+const NoEncontradaPage = diferida(() => import('@public/paginas/NoEncontradaPage'), 'NoEncontradaPage')
 
 const AdminLayout = diferida(() => import('@admin/AdminLayout'), 'AdminLayout')
 const InicioDelPanel = diferida(() => import('@admin/InicioDelPanel'), 'InicioDelPanel')
@@ -47,6 +54,16 @@ const VehiculosPage = diferida(() => import('@admin/paginas/VehiculosPage'), 'Ve
 function App() {
   return (
     <BrowserRouter>
+      <Rutas />
+    </BrowserRouter>
+  )
+}
+
+function Rutas() {
+  const { pathname } = useLocation()
+
+  return (
+    <LimiteDeErrores clave={pathname}>
       {/* El fallback se ve solo en la primera carga de una pantalla diferida: al navegar,
           React Router hace la transición y deja la pantalla anterior hasta que llega la
           nueva. */}
@@ -148,6 +165,10 @@ function App() {
                 </RutaProtegida>
               }
             />
+
+            {/* Una pantalla del panel que no existe vuelve al inicio del panel, no a la
+                vidriera de una automotora. */}
+            <Route path="*" element={<Navigate to="/admin" replace />} />
           </Route>
 
           {/* Sitio público por dominio propio. */}
@@ -155,6 +176,8 @@ function App() {
             <Route index element={<HomePage />} />
             <Route path="vehiculos" element={<ListadoPage />} />
             <Route path="vehiculos/:id" element={<FichaPage />} />
+            <Route path="privacidad" element={<PrivacidadPage />} />
+            <Route path="*" element={<NoEncontradaPage />} />
           </Route>
 
           {/* Y el mismo sitio por slug, que es como se trabaja en desarrollo. */}
@@ -162,12 +185,12 @@ function App() {
             <Route index element={<HomePage />} />
             <Route path="vehiculos" element={<ListadoPage />} />
             <Route path="vehiculos/:id" element={<FichaPage />} />
+            <Route path="privacidad" element={<PrivacidadPage />} />
+            <Route path="*" element={<NoEncontradaPage />} />
           </Route>
-
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
-    </BrowserRouter>
+    </LimiteDeErrores>
   )
 }
 

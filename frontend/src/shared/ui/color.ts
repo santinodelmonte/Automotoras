@@ -23,15 +23,18 @@ export interface ColoresDeMarca {
 export function coloresDeMarca(hex: string): ColoresDeMarca {
   const rgb = aRgb(hex) ?? TINTA
 
-  // Blanco hasta 3:1, que es lo que WCAG pide para texto grande y para controles: los
-  // botones y badges de marca son eso. Las marcas claras —amarillos, celestes— pasan a
-  // tinta, que es lo que haría cualquier diseñador con esos colores.
-  const contraste = contrasteEntre(rgb, BLANCO) >= 3 ? '#ffffff' : aHex(TINTA)
+  // Blanco mientras llegue a 4.5:1, lo que WCAG pide para texto de tamaño normal: los
+  // botones y badges de marca llevan texto de 12 a 14 px, que no cuenta como grande. Por
+  // debajo, el que más contraste tenga de los dos. Las marcas claras —amarillos, celestes—
+  // y las medias —naranjas, rojos vivos— pasan a tinta.
+  const sobreBlanco = contrasteEntre(rgb, BLANCO)
+  const contraste = sobreBlanco >= 4.5 || sobreBlanco >= contrasteEntre(rgb, TINTA) ? '#ffffff' : aHex(TINTA)
 
-  // Para texto chico sobre blanco hace falta 4.5:1. Se oscurece de a poco hacia la tinta
-  // hasta llegar; un color que ya cumple no se toca.
+  // Para texto chico hace falta 4.5:1. Se pide 5.1 contra blanco para que siga llegando
+  // sobre los fondos teñidos con la marca al 10 % (los badges). Se oscurece de a poco
+  // hacia la tinta hasta llegar; un color que ya cumple no se toca.
   let tinta = rgb
-  for (let paso = 1; contrasteEntre(tinta, BLANCO) < 4.5 && paso <= 10; paso++) {
+  for (let paso = 1; contrasteEntre(tinta, BLANCO) < 5.1 && paso <= 10; paso++) {
     tinta = rgb.map((canal, i) => canal + (TINTA[i] - canal) * (paso / 10)) as Rgb
   }
 

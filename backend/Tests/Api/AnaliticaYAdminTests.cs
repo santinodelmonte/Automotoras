@@ -125,6 +125,34 @@ public sealed class AnaliticaYAdminTests : IClassFixture<FabricaDeApi>
         Assert.Contains(tablero.VehiculosPorEstado, c => c.Estado == nameof(EstadoVehiculo.Disponible));
     }
 
+    /// <summary>
+    /// Los primeros pasos salen de los datos: Norte tiene color, WhatsApp y vendedor; Sur,
+    /// recién dada de alta, no tiene nada configurado. Y el dominio sin verificar no se
+    /// ofrece como dirección del sitio.
+    /// </summary>
+    [Fact]
+    public async Task Los_primeros_pasos_reflejan_lo_que_le_falta_a_cada_automotora()
+    {
+        using var norte = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+        using var sur = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerSur);
+
+        var pasosDeNorte = (await norte.GetFromJsonAsync<DashboardDto>("/api/dashboard"))!.PrimerosPasos;
+        var pasosDeSur = (await sur.GetFromJsonAsync<DashboardDto>("/api/dashboard"))!.PrimerosPasos;
+
+        Assert.True(pasosDeNorte.TieneColor);
+        Assert.True(pasosDeNorte.TieneWhatsapp);
+        Assert.True(pasosDeNorte.Vendedores >= 1);
+        Assert.True(pasosDeNorte.VehiculosPublicados > 0);
+        Assert.Equal("norte", pasosDeNorte.Slug);
+        Assert.Equal(FabricaDeApi.DominioDeNorte, pasosDeNorte.DominioCustom);
+
+        Assert.False(pasosDeSur.TieneColor);
+        Assert.False(pasosDeSur.TieneWhatsapp);
+        Assert.False(pasosDeSur.TieneLogo);
+        Assert.Equal(0, pasosDeSur.Vendedores);
+        Assert.Null(pasosDeSur.DominioCustom);
+    }
+
     [Fact]
     public async Task El_vendedor_no_entra_al_dashboard()
     {

@@ -382,6 +382,20 @@ export interface Dashboard {
   busquedasSinResultadoUltimos30Dias: number
   diasEnGondolaPromedio: number
   masVistos: VehiculoMasVisto[]
+  primerosPasos: PrimerosPasos
+}
+
+/** Lo que le falta configurar a una automotora nueva. Lo calcula el servidor de los datos. */
+export interface PrimerosPasos {
+  tieneLogo: boolean
+  tieneColor: boolean
+  tieneWhatsapp: boolean
+  vehiculosPublicados: number
+  publicadosSinFotos: number
+  vendedores: number
+  slug: string
+  /** Solo si está verificado: un dominio sin verificar todavía no sirve el sitio. */
+  dominioCustom: string | null
 }
 
 // ------------------------------------------------------------------ reportes
