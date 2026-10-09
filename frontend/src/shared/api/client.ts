@@ -1,10 +1,19 @@
 import { sesionGuardada } from './sesionGuardada'
 import type {
   ActualizarTenantRequest,
+  Benchmark,
   CambiarEstadoRequest,
   ConfiguracionDeTenant,
   CrearTenantRequest,
+  FilaDeCobranza,
+  GuardarPlanRequest,
+  Plan,
+  RegistrarPagoRequest,
+  ResultadoDeImportacion,
+  SituacionDelPlan,
+  SuscripcionDeTenant,
   CrearUsuarioRequest,
+  BusquedaSinResultado,
   Dashboard,
   FiltrosDeVehiculos,
   FiltrosDisponibles,
@@ -20,12 +29,16 @@ import type {
   PaginaDe,
   ProblemDetails,
   RegistrarEventoRequest,
+  BusquedaDeTextoRequest,
+  ReporteDeDemanda,
   ResolverSolicitudRequest,
   Sesion,
   SolicitudModelo,
+  SugerenciaDeCompra,
   TenantAdmin,
   TenantPublico,
   Usuario,
+  VerificacionDeDominio,
   Vehiculo,
   VehiculoFoto,
   VehiculoPublico,
@@ -83,6 +96,8 @@ interface RequestOptions {
   signal?: AbortSignal
   /** Los endpoints de sesión no se reintentan: son los que producen el token. */
   sinReintento?: boolean
+  /** Para descargas: devuelve el cuerpo como `Blob` en vez de parsear JSON. */
+  comoArchivo?: boolean
 }
 
 /** Arma un query string salteando los valores vacíos, que ensuciarían la URL. */
@@ -118,8 +133,16 @@ function publicar(sesion: Sesion | null) {
   for (const escucha of escuchas) escucha(sesion)
 }
 
+/**
+ * Si la última sesión la cerró el usuario con "Salir". En ese caso la pantalla en la que
+ * estaba no se recuerda: quien entre después puede ser otra persona, con otro rol.
+ */
+let cerradaAPedido = false
+
 export const sesion = {
   actual: () => sesionActual,
+
+  fueCerradaAPedido: () => cerradaAPedido,
 
   suscribirse(escucha: Escucha): () => void {
     escuchas.add(escucha)
@@ -127,6 +150,7 @@ export const sesion = {
   },
 
   establecer(nueva: Sesion) {
+    cerradaAPedido = false
     sesionGuardada.guardar(nueva)
     publicar(nueva)
   },
@@ -134,6 +158,12 @@ export const sesion = {
   limpiar() {
     sesionGuardada.borrar()
     publicar(null)
+  },
+
+  /** El "Salir" del usuario, a diferencia de una sesión que venció. */
+  cerrar() {
+    cerradaAPedido = true
+    sesion.limpiar()
   },
 }
 
@@ -178,6 +208,10 @@ async function request<TResponse>(path: string, options: RequestOptions = {}): P
     return undefined as TResponse
   }
 
+  if (options.comoArchivo) {
+    return (await response.blob()) as TResponse
+  }
+
   return (await response.json()) as TResponse
 }
 
@@ -215,6 +249,23 @@ async function leerProblemDetails(response: Response): Promise<ProblemDetails | 
   }
 }
 
+function formularioDeArchivo(archivo: File): FormData {
+  const form = new FormData()
+  form.append('archivo', archivo, archivo.name)
+  return form
+}
+
+/** Dispara la descarga de un archivo que vino de la API. */
+export function guardarArchivo(contenido: Blob, nombre: string) {
+  const url = URL.createObjectURL(contenido)
+  const enlace = document.createElement('a')
+  enlace.href = url
+  enlace.download = nombre
+  enlace.click()
+  // Se libera después: revocarlo en el acto cancela la descarga en algunos navegadores.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /**
  * En desarrollo el tenant del sitio público viaja como prefijo de la ruta. En producción,
  * cuando cada automotora entra por su dominio, el prefijo sobra y el servidor resuelve el
@@ -238,6 +289,10 @@ export const api = {
       }),
 
     me: (signal?: AbortSignal) => request<Usuario>('/api/auth/me', { signal }),
+
+    /** Cambia la contraseña propia y devuelve una sesión nueva, ya sin la marca de provisoria. */
+    cambiarPassword: (actual: string, nueva: string) =>
+      request<Sesion>('/api/auth/password', { method: 'POST', body: { actual, nueva } }),
 
     logout: (refreshToken: string) =>
       request<void>('/api/auth/logout', {
@@ -294,6 +349,16 @@ export const api = {
 
     borrar: (id: number) => request<void>(`/api/vehiculos/${id}`, { method: 'DELETE' }),
 
+    plantillaDeImportacion: () =>
+      request<Blob>('/api/vehiculos/importacion/plantilla', { comoArchivo: true }),
+
+    /** Sin `confirmar`, solo valida. Con `confirmar`, carga todo o nada. */
+    importar: (archivo: File, confirmar: boolean) =>
+      request<ResultadoDeImportacion>(`/api/vehiculos/importacion${query({ confirmar })}`, {
+        method: 'POST',
+        form: formularioDeArchivo(archivo),
+      }),
+
     fotos: {
       subir: (vehiculoId: number, imagen: Blob, nombre: string) => {
         const form = new FormData()
@@ -331,9 +396,36 @@ export const api = {
 
       return request<ConfiguracionDeTenant>('/api/tenant/logo', { method: 'POST', form })
     },
+
+    /** El plan, el uso contra los topes y el estado del pago. Alimenta los avisos del panel. */
+    plan: (signal?: AbortSignal) => request<SituacionDelPlan>('/api/tenant/plan', { signal }),
+
+    /** ZIP con todos los datos de la automotora. */
+    exportar: () => request<Blob>('/api/tenant/exportacion', { comoArchivo: true }),
   },
 
   dashboard: (signal?: AbortSignal) => request<Dashboard>('/api/dashboard', { signal }),
+
+  /**
+   * Los reportes de demanda. La ventana viaja en días y la acota el servidor: el cliente
+   * pide lo que quiere y el que decide cuánto se puede consultar es el que paga la
+   * consulta.
+   */
+  reportes: {
+    demanda: (dias: number, signal?: AbortSignal) =>
+      request<ReporteDeDemanda>(`/api/reportes/demanda${query({ dias })}`, { signal }),
+
+    busquedasSinResultado: (dias: number, signal?: AbortSignal) =>
+      request<BusquedaSinResultado[]>(`/api/reportes/busquedas-sin-resultado${query({ dias })}`, {
+        signal,
+      }),
+
+    sugerencias: (dias: number, signal?: AbortSignal) =>
+      request<SugerenciaDeCompra[]>(`/api/reportes/sugerencias${query({ dias })}`, { signal }),
+
+    benchmark: (dias: number, signal?: AbortSignal) =>
+      request<Benchmark>(`/api/reportes/benchmark${query({ dias })}`, { signal }),
+  },
 
   admin: {
     tenants: (signal?: AbortSignal) => request<TenantAdmin[]>('/api/admin/tenants', { signal }),
@@ -341,8 +433,62 @@ export const api = {
     crearTenant: (nuevo: CrearTenantRequest) =>
       request<TenantAdmin>('/api/admin/tenants', { method: 'POST', body: nuevo }),
 
+    /**
+     * Comprueba que el dominio propio apunte a la aplicación y lo habilita si es así.
+     *
+     * Se dispara a mano: una consulta de DNS por visita sería una llamada saliente en el
+     * camino caliente del sitio, y el dato cambia una vez en la vida del dominio.
+     */
+    verificarDominio: (id: number) =>
+      request<VerificacionDeDominio>(`/api/admin/tenants/${id}/verificar-dominio`, { method: 'POST' }),
+
+    /** Contraseña provisoria para un usuario de la automotora: el camino del dueño que se olvidó la suya. */
+    restablecerPassword: (id: number, email: string, password: string) =>
+      request<void>(`/api/admin/tenants/${id}/restablecer-password`, {
+        method: 'POST',
+        body: { email, password },
+      }),
+
     actualizarTenant: (id: number, cambios: ActualizarTenantRequest) =>
       request<TenantAdmin>(`/api/admin/tenants/${id}`, { method: 'PUT', body: cambios }),
+
+    planes: (signal?: AbortSignal) => request<Plan[]>('/api/admin/planes', { signal }),
+
+    crearPlan: (plan: GuardarPlanRequest) =>
+      request<Plan>('/api/admin/planes', { method: 'POST', body: plan }),
+
+    actualizarPlan: (id: number, plan: GuardarPlanRequest) =>
+      request<Plan>(`/api/admin/planes/${id}`, { method: 'PUT', body: plan }),
+
+    /** Todas las automotoras, las más urgentes primero. */
+    cobranza: (signal?: AbortSignal) => request<FilaDeCobranza[]>('/api/admin/cobranza', { signal }),
+
+    suscripcion: (tenantId: number, signal?: AbortSignal) =>
+      request<SuscripcionDeTenant>(`/api/admin/tenants/${tenantId}/suscripcion`, { signal }),
+
+    cambiarPlan: (tenantId: number, plan: string) =>
+      request<SuscripcionDeTenant>(`/api/admin/tenants/${tenantId}/suscripcion`, {
+        method: 'POST',
+        body: { plan },
+      }),
+
+    registrarPago: (tenantId: number, pago: RegistrarPagoRequest) =>
+      request<SuscripcionDeTenant>(`/api/admin/tenants/${tenantId}/pagos`, { method: 'POST', body: pago }),
+
+    darDeBaja: (tenantId: number, fecha: string, motivo: string) =>
+      request<SuscripcionDeTenant>(`/api/admin/tenants/${tenantId}/baja`, {
+        method: 'POST',
+        body: { fecha, motivo },
+      }),
+
+    importarStock: (tenantId: number, archivo: File, confirmar: boolean) =>
+      request<ResultadoDeImportacion>(`/api/admin/tenants/${tenantId}/importacion${query({ confirmar })}`, {
+        method: 'POST',
+        form: formularioDeArchivo(archivo),
+      }),
+
+    carrocerias: (signal?: AbortSignal) =>
+      request<string[]>('/api/admin/catalogo/carrocerias', { signal }),
 
     marcas: (signal?: AbortSignal) => request<Marca[]>('/api/admin/catalogo/marcas', { signal }),
 
@@ -406,6 +552,14 @@ export const api = {
       request<void>(rutaPublica(slug, '/api/public/events'), {
         method: 'POST',
         body: evento,
+        sinReintento: true,
+      }).catch(() => undefined),
+
+    /** Registra lo que se buscó en la portada y no se encontró. Como los eventos, sin propagar errores. */
+    busqueda: (slug: string | null, busqueda: BusquedaDeTextoRequest) =>
+      request<void>(rutaPublica(slug, '/api/public/busquedas'), {
+        method: 'POST',
+        body: busqueda,
         sinReintento: true,
       }).catch(() => undefined),
   },

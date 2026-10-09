@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Planes;
 using AutomotoraSaaS.Core.Storage;
+using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -33,6 +35,65 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     public const string Password = "Prueba-segura-1";
 
     private readonly SqliteConnection _conexion = new("Filename=:memory:");
+
+    /// <summary>
+    /// La configuración de los tests, puesta en variables de entorno antes de que se
+    /// construya el primer host.
+    /// </summary>
+    /// <remarks>
+    /// No alcanza con <c>ConfigureAppConfiguration</c>: esos delegados corren recién
+    /// dentro de <c>builder.Build()</c>, y <c>Program</c> lee y valida el JWT antes, al
+    /// registrar la autenticación. Con la config puesta ahí, el <c>JwtBearer</c> quedaba
+    /// validando contra el issuer vacío de <c>appsettings.json</c> mientras el generador
+    /// firmaba con el de los tests, y todo request autenticado respondía 401.
+    /// <para>
+    /// Las variables de entorno sí llegan a tiempo, porque <c>Program</c> las agrega
+    /// antes de leer nada. Son del proceso entero, y está bien: todos los tests de API
+    /// quieren exactamente estos valores.
+    /// </para>
+    /// </remarks>
+    static FabricaDeApi()
+    {
+        var configuracion = new Dictionary<string, string?>
+        {
+            // Presente pero sin usar: el DbContext se reemplaza más abajo por SQLite.
+            ["ConnectionStrings__Default"] = "Server=no-se-usa;Database=no-se-usa;User Id=no;Password=no;",
+            ["Jwt__Issuer"] = "automotora-saas-tests",
+            ["Jwt__Audience"] = "automotora-saas-tests",
+            ["Jwt__Secret"] = "secreto-de-tests-largo-y-aburrido-de-sobra-32",
+            ["Jwt__AccessTokenMinutes"] = "15",
+            ["Jwt__RefreshTokenDays"] = "30",
+            ["Cors__AllowedOrigins__0"] = "http://localhost:5173",
+            ["Jobs__Secret"] = SecretoDeJobs,
+            ["Deploy__IpsPublicas__0"] = IpDeLaAplicacion,
+
+            // Todos los tests llegan desde la misma "IP" del TestServer; con el tope real
+            // de logins por IP, una clase con muchos tests se frenaría a sí misma.
+            ["Seguridad__LoginsPorMinutoPorIp"] = "100000",
+
+            // El index.html del frontend, que en producción vive en wwwroot.
+            ["Sitio__Index"] = IndexDePrueba(),
+
+            // El seed de arranque no corre fuera de Development, pero si alguien hereda
+            // una variable de su shell, que no se cuele en la base de los tests.
+            ["Seed__Password"] = null,
+        };
+
+        foreach (var (clave, valor) in configuracion)
+        {
+            Environment.SetEnvironmentVariable(clave, valor);
+        }
+    }
+
+    /// <summary>Un index.html mínimo, con lo que el servidor reemplaza.</summary>
+    private static string IndexDePrueba()
+    {
+        var ruta = Path.Combine(Path.GetTempPath(), "automotora-saas-tests-index.html");
+        File.WriteAllText(
+            ruta,
+            "<!doctype html><html><head><link rel=\"icon\" href=\"/favicon.svg\" /><title>Automotora SaaS</title></head><body><div id=\"root\"></div></body></html>");
+        return ruta;
+    }
 
     public FabricaDeApi()
     {
@@ -70,10 +131,29 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     /// <summary>Vendido: sigue en la base y no sale en el sitio público.</summary>
     public int VendidoDeNorte { get; private set; }
 
+    /// <summary>
+    /// Publicado hace meses y sin un solo evento: el caso de la unidad estancada.
+    /// </summary>
+    /// <remarks>
+    /// Tiene el suyo propio y no comparte el de los demás tests porque su condición es
+    /// justamente la ausencia de eventos, y cualquier test que le agregara uno al vehículo
+    /// compartido lo cambiaría de señal.
+    /// </remarks>
+    public int OlvidadoDeNorte { get; private set; }
+
     public int VehiculoDeSur { get; private set; }
 
     /// <summary>Storage en memoria. Los tests no tocan el disco ni salen a la red.</summary>
     public AlmacenamientoDePrueba Almacenamiento { get; } = new();
+
+    /// <summary>DNS de mentira: los tests declaran a dónde apunta cada dominio.</summary>
+    public DnsDePrueba Dns { get; } = new();
+
+    /// <summary>Correo en memoria: los avisos quedan acá y no salen a ningún lado.</summary>
+    public CorreoDePrueba Correo { get; } = new();
+
+    /// <summary>La IP que la configuración de los tests declara como propia.</summary>
+    public const string IpDeLaAplicacion = "190.64.10.20";
 
     public const string EmailOwnerNorte = "owner@norte.uy";
     public const string EmailOwnerSur = "owner@sur.uy";
@@ -82,6 +162,9 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     public const string EmailSuperAdmin = "super@saas.uy";
 
     public const string DominioDeNorte = "automotoranorte.uy";
+
+    /// <summary>Cargado pero sin verificar: no sirve el sitio de nadie.</summary>
+    public const string DominioSinVerificarDeSur = "automotorasur.uy";
 
     public const string SecretoDeJobs = "secreto-de-jobs-para-los-tests";
 
@@ -111,6 +194,76 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         return cliente;
     }
 
+    /// <summary>
+    /// Corre algo contra la base con la escritura cross-tenant habilitada, para sembrar
+    /// datos de un tenant puntual sin pasar por un request.
+    /// </summary>
+    /// <remarks>
+    /// La analítica se puebla así y no por el endpoint público porque los reportes miran
+    /// una ventana de días: los eventos tienen que poder tener fecha vieja, y el endpoint
+    /// —con razón— siempre los guarda con la de ahora.
+    /// </remarks>
+    public void ConLaBase(Action<AppDbContext> accion)
+    {
+        ArgumentNullException.ThrowIfNull(accion);
+
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        using var _ = db.PermitirEscrituraCrossTenant();
+
+        accion(db);
+        db.SaveChanges();
+    }
+
+    /// <summary>
+    /// Una automotora nueva con su Owner, en el plan pedido y con el pago cubierto hasta
+    /// <paramref name="pagaHasta"/> (por defecto, dentro de un mes).
+    /// </summary>
+    /// <returns>El id de la automotora y el email de su Owner, que entra con <see cref="Password"/>.</returns>
+    public (int TenantId, string EmailOwner) AutomotoraConPlan(string slug, string codigoDePlan, DateOnly? pagaHasta = null)
+    {
+        var email = $"owner@{slug}.uy";
+        var tenantId = 0;
+
+        ConLaBase(db =>
+        {
+            var tenant = new Tenant { Slug = slug, Nombre = $"Automotora {slug}" };
+            db.Tenants.Add(tenant);
+            db.SaveChanges();
+
+            var plan = db.Planes.Single(p => p.Codigo == codigoDePlan);
+            var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+
+            db.Suscripciones.Add(new Suscripcion
+            {
+                TenantId = tenant.Id,
+                PlanId = plan.Id,
+                Inicio = hoy.AddMonths(-3),
+                PagaHasta = pagaHasta ?? hoy.AddMonths(1),
+            });
+
+            using var scope = Services.CreateScope();
+            var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+            db.Users.Add(NuevoUsuario(email, $"Owner {slug}", RolUsuario.Owner, tenant.Id, hasher.Hash(Password)));
+
+            tenantId = tenant.Id;
+        });
+
+        return (tenantId, email);
+    }
+
+    /// <summary>Un evento ya ocurrido, con su fecha.</summary>
+    public static Evento Evento(int tenantId, int? vehiculoId, TipoEvento tipo, DateTime cuando, string? sesion = null)
+        => new()
+        {
+            TenantId = tenantId,
+            VehiculoId = vehiculoId,
+            Tipo = tipo,
+            SessionId = sesion,
+            CreatedAt = cuando,
+        };
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -118,21 +271,6 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         // Ni Development ni Production: sin Development no corre el seed de arranque, que
         // acá lo hace la fábrica.
         builder.UseEnvironment("Testing");
-
-        builder.ConfigureAppConfiguration((_, configuracion) => configuracion.AddInMemoryCollection(
-            new Dictionary<string, string?>
-            {
-                // Presente pero sin usar: el DbContext se reemplaza más abajo por SQLite.
-                ["ConnectionStrings:Default"] = "Server=no-se-usa;Database=no-se-usa;User Id=no;Password=no;",
-                ["Jwt:Issuer"] = "automotora-saas-tests",
-                ["Jwt:Audience"] = "automotora-saas-tests",
-                ["Jwt:Secret"] = "secreto-de-tests-largo-y-aburrido-de-sobra-32",
-                ["Jwt:AccessTokenMinutes"] = "15",
-                ["Jwt:RefreshTokenDays"] = "30",
-                ["Cors:AllowedOrigins:0"] = "http://localhost:5173",
-                ["Jobs:Secret"] = SecretoDeJobs,
-                ["Analytics:IpHashSalt"] = "sal-de-tests-estable",
-            }));
 
         builder.ConfigureServices(servicios =>
         {
@@ -146,6 +284,12 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
             servicios.RemoveAll<IImageStorage>();
             servicios.AddSingleton<IImageStorage>(Almacenamiento);
+
+            servicios.RemoveAll<IResolvedorDeDns>();
+            servicios.AddSingleton<IResolvedorDeDns>(Dns);
+
+            servicios.RemoveAll<INotificadorPorCorreo>();
+            servicios.AddSingleton<INotificadorPorCorreo>(Correo);
         });
     }
 
@@ -170,11 +314,23 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
             Slug = "norte",
             Nombre = "Automotora Norte",
             DominioCustom = DominioDeNorte,
+
+            // Verificado: es la automotora que ya tiene su dominio funcionando, y por eso
+            // el sitio le responde por ahí.
+            DominioVerificadoEn = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
             ColorPrimario = "#059669",
             Whatsapp = "+59899111222",
         };
 
-        var sur = new Tenant { Slug = "sur", Nombre = "Automotora Sur" };
+        // Sur declaró un dominio y todavía no lo verificó. Es el estado en el que está una
+        // automotora entre que se lo cargan y que toca su DNS, y el sitio no le responde
+        // por ahí hasta entonces.
+        var sur = new Tenant
+        {
+            Slug = "sur",
+            Nombre = "Automotora Sur",
+            DominioCustom = DominioSinVerificarDeSur,
+        };
         var apagada = new Tenant { Slug = "apagada", Nombre = "Automotora Apagada", Activo = false };
 
         db.Tenants.AddRange(norte, sur, apagada);
@@ -182,6 +338,18 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
         TenantNorte = norte.Id;
         TenantSur = sur.Id;
+
+        // Plan Full y al día: los tests de siempre prueban el producto, no la cobranza. Los
+        // de planes y vencimientos arman sus propias automotoras con AutomotoraConPlan.
+        var full = db.Planes.Single(p => p.Codigo == CodigosDePlan.Full);
+        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        foreach (var tenant in new[] { norte, sur, apagada })
+        {
+            db.Suscripciones.Add(Suscripciones.IniciarConBonificacion(tenant.Id, full, hoy));
+        }
+
+        db.SaveChanges();
 
         var hash = hasher.Hash(Password);
 
@@ -229,16 +397,22 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         var disponible = NuevoVehiculo(norteId, modelo.Id, 2019, 15_000m, EstadoVehiculo.Disponible);
         var vendido = NuevoVehiculo(norteId, modelo.Id, 2016, 9_500m, EstadoVehiculo.Vendido);
         var deSur = NuevoVehiculo(surId, modelo.Id, 2021, 22_000m, EstadoVehiculo.Disponible);
+        var olvidado = NuevoVehiculo(norteId, modelo.Id, 2013, 6_500m, EstadoVehiculo.Disponible);
+
+        // Relativa al reloj y no una fecha fija: lo que este vehículo representa es
+        // "hace meses que está", y una constante deja de significar eso con el tiempo.
+        olvidado.FechaPublicacion = DateTime.UtcNow.AddDays(-150);
 
         vendido.FechaVenta = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
         vendido.PrecioVenta = 9_000m;
 
-        db.Vehiculos.AddRange(disponible, vendido, deSur);
+        db.Vehiculos.AddRange(disponible, vendido, deSur, olvidado);
         db.SaveChanges();
 
         VehiculoDeNorte = disponible.Id;
         VendidoDeNorte = vendido.Id;
         VehiculoDeSur = deSur.Id;
+        OlvidadoDeNorte = olvidado.Id;
 
         db.VehiculoFotos.Add(new VehiculoFoto
         {
@@ -266,6 +440,19 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
             PrecioCosto = precio - 2_000m,
             FechaPublicacion = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
         };
+
+    /// <summary>
+    /// Agrega un Seller a Norte con la contraseña de siempre. Para los tests que necesitan
+    /// una cuenta que nadie más toque.
+    /// </summary>
+    public void AgregarVendedorDeNorte(string email)
+    {
+        using var scope = Services.CreateScope();
+        var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+
+        ConLaBase(db => db.Users.Add(
+            NuevoUsuario(email, "Vendedor extra", RolUsuario.Seller, TenantNorte, hasher.Hash(Password))));
+    }
 
     private static User NuevoUsuario(string email, string nombre, RolUsuario rol, int? tenantId, string hash)
         => new()

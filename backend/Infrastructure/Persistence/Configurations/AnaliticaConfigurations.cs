@@ -13,10 +13,6 @@ public sealed class EventoConfiguration : IEntityTypeConfiguration<Evento>
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.SessionId).HasMaxLength(64);
-        // SHA-256 en hexadecimal. La IP en claro no se guarda nunca.
-        builder.Property(e => e.IpHash).HasMaxLength(64);
-        builder.Property(e => e.UserAgent).HasMaxLength(400);
-        builder.Property(e => e.Referer).HasMaxLength(500);
         builder.Property(e => e.Metadata).HasColumnType("json");
 
         // Índice obligatorio del brief. Es el que sostiene todos los reportes: esta tabla
@@ -71,5 +67,34 @@ public sealed class CotizacionConfiguration : IEntityTypeConfiguration<Cotizacio
 
         // Una fila por día: el job que la puebla puede correr más de una vez sin duplicar.
         builder.HasIndex(c => c.Fecha).IsUnique();
+    }
+}
+
+public sealed class PrecioDeMercadoConfiguration : IEntityTypeConfiguration<PrecioDeMercado>
+{
+    public void Configure(EntityTypeBuilder<PrecioDeMercado> builder)
+    {
+        builder.ToTable("precios_de_mercado");
+
+        builder.HasKey(p => p.Id);
+
+        builder.Property(p => p.Fuente).HasMaxLength(40).IsRequired();
+        builder.Property(p => p.PrecioMediano).HasPrecision(12, 2);
+        builder.Property(p => p.PrecioMinimo).HasPrecision(12, 2);
+        builder.Property(p => p.PrecioMaximo).HasPrecision(12, 2);
+
+        // Un snapshot por fuente, modelo, año y día: el job puede reintentar sin duplicar,
+        // que es lo que lo hace disparable por un cron con reintentos.
+        builder.HasIndex(p => new { p.Fuente, p.ModeloId, p.Anio, p.Fecha }).IsUnique();
+
+        // Y este es el de lectura: siempre se pide el último precio de un modelo y año.
+        builder.HasIndex(p => new { p.ModeloId, p.Anio, p.Fecha });
+
+        // Restrict y no Cascade: un modelo que se borra del catálogo no puede llevarse la
+        // historia de precios, que es de todas las automotoras y no se puede reconstruir.
+        builder.HasOne(p => p.Modelo)
+            .WithMany()
+            .HasForeignKey(p => p.ModeloId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -30,6 +30,16 @@ public class User : ICreatedAt
 
     public bool Activo { get; set; } = true;
 
+    /// <summary>
+    /// La contraseña la puso otra persona y hay que cambiarla antes de usar el panel.
+    /// </summary>
+    /// <remarks>
+    /// Se marca cuando el SuperAdmin da de alta al dueño, cuando el dueño da de alta a un
+    /// vendedor y cuando el dueño le resetea la contraseña a alguien. Una contraseña que
+    /// conocen dos personas no es de ninguna.
+    /// </remarks>
+    public bool DebeCambiarPassword { get; set; }
+
     /// <summary>UTC.</summary>
     public DateTime CreatedAt { get; set; }
 

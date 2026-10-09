@@ -1,21 +1,31 @@
 const CLAVE = 'automotora.visita'
 
 /**
- * Identificador de la visita, para poder agrupar la actividad de una misma persona sin
- * saber quién es.
+ * Identificador de la visita, para contar personas distintas sin saber quién es nadie.
  *
- * Lo genera y lo guarda el cliente, no una cookie del servidor. El brief pedía cookie de
- * primera parte, pero el sitio y la API viven en orígenes distintos —y con dominio propio
- * por automotora eso no cambia—, así que una cookie del servidor sería de tercera parte:
- * los navegadores la bloquean por defecto y el dato se perdería justo donde más tráfico
- * hay. Esto cumple lo mismo y no depende de la política de cookies de nadie.
+ * Vive en `sessionStorage`: dura lo que la pestaña abierta y muere al cerrarla. Alcanza
+ * para que cuatro búsquedas de la misma persona cuenten como una visita y no como cuatro,
+ * que es para lo único que se usa, y no permite seguir a nadie de un día para otro. Antes
+ * estaba en `localStorage` y duraba para siempre: era un identificador persistente del
+ * visitante, un dato personal que ningún reporte necesitaba.
+ *
+ * Si el navegador no deja guardar nada (modo privado estricto), se manda sin
+ * identificador: la visita no se cuenta como distinta, que es lo correcto antes que
+ * inventarla.
  */
-export function idDeVisita(): string {
-  const guardado = localStorage.getItem(CLAVE)
-  if (guardado) return guardado
+export function idDeVisita(): string | null {
+  try {
+    // El identificador viejo, persistente, se borra en cuanto se ve.
+    localStorage.removeItem(CLAVE)
 
-  const nuevo = crypto.randomUUID()
-  localStorage.setItem(CLAVE, nuevo)
+    const guardado = sessionStorage.getItem(CLAVE)
+    if (guardado) return guardado
 
-  return nuevo
+    const nuevo = crypto.randomUUID()
+    sessionStorage.setItem(CLAVE, nuevo)
+
+    return nuevo
+  } catch {
+    return null
+  }
 }

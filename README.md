@@ -15,11 +15,14 @@ juntos y por eso el tracking de eventos se instrumenta desde el primer día.
 El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está en
 [docs/brief.md](docs/brief.md).
 
-> **Estado actual: fase 1 completa.** Sitio público por automotora (home, listado con
-> filtros y ficha con WhatsApp), panel con ABM de vehículos, fotos, cambio de estado,
-> usuarios, configuración y tablero, panel de SuperAdmin (automotoras, catálogo y
-> aprobación de modelos), tracking de eventos y jobs por endpoint. Lo que sigue es la
-> fase 2: los reportes de demanda que estos datos ya están alimentando.
+> **Estado actual: fase 3 —comercialización— casi completa.** Sobre las fases 1 y 2 —sitio
+> público, panel, tracking, reportes de demanda, precio de referencia y benchmark— ahora
+> están los planes con sus topes aplicados, la cobranza manual con vencimiento, gracia y
+> suspensión, los avisos de vencimiento por correo, la exportación de datos y la carga
+> masiva de stock por CSV. Lo que falta es operativo: configurar el SMTP, decidir el canal
+> de soporte y verificar los respaldos del hosting. El detalle está en
+> [docs/fase3-comercializacion.md](docs/fase3-comercializacion.md) y el procedimiento de
+> alta de clientes en [docs/operacion.md](docs/operacion.md).
 
 ## Requisitos previos
 
@@ -29,6 +32,7 @@ El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está 
 | Node.js | 20.19+ / 22.12+ | Probado con Node 24. |
 | npm | 10+ | |
 | MySQL | 8.0 | Necesario para aplicar migraciones y correr contra una base real. La API levanta y `/api/health` responde sin él. |
+| MariaDB | 10.4+ | Alternativa para desarrollo: es lo que trae XAMPP. Hay que declararlo en `Database:ServerVersion` — ver abajo. |
 
 Las herramientas de EF Core están fijadas en el repo ([`.config/dotnet-tools.json`](.config/dotnet-tools.json)).
 Después de clonar:
@@ -60,19 +64,80 @@ git) o con la variable de entorno:
 Jwt__Secret="una-clave-larga-y-aleatoria-de-al-menos-32-chars" dotnet run
 ```
 
+### La base en desarrollo
+
+Con XAMPP, lo que corre no es MySQL sino MariaDB, y Pomelo genera SQL distinto para cada
+una. La versión se declara en la configuración; el default es MySQL 8, que es lo que hay en
+producción:
+
+```json
+"Database": { "ServerVersion": "10.4.32-mariadb" }
+```
+
+Sigue siendo declarada y no autodetectada: `ServerVersion.AutoDetect` abre una conexión
+durante el arranque, y en IIS eso convierte una base momentáneamente caída en una aplicación
+que no levanta. La versión que corre se ve con `SELECT VERSION();`.
+
+La base no hay que crearla a mano ni hay ningún script SQL que correr: `database update`
+la crea si no existe y le aplica las migraciones. Con MySQL arrancado, un solo comando:
+
+```bash
+dotnet dotnet-ef database update --project backend/Infrastructure --startup-project backend/Infrastructure
+```
+
+Lee la conexión de `ConnectionStrings__Default`; sin esa variable usa la que tiene por
+defecto la factory de diseño, que apunta a `localhost:3306`, base `automotora_saas`, usuario
+`root` sin contraseña — o sea, XAMPP recién instalado. Para apuntar a otro lado:
+
+```bash
+ConnectionStrings__Default="Server=localhost;Port=3306;Database=automotora_saas;User Id=root;Password=;" Database__ServerVersion="10.4.32-mariadb" dotnet dotnet-ef database update --project backend/Infrastructure --startup-project backend/Infrastructure
+```
+
+Los datos de ejemplo no los carga este comando: los siembra la API sola al arrancar en
+Development, si `Seed:Password` está definida. Migrar y sembrar son cosas distintas a
+propósito — el esquema se versiona, los datos de prueba no.
+
 ### Usuarios de desarrollo
 
-Definí `Seed:Password` y el arranque en Development siembra dos automotoras, sus usuarios
-y el catálogo de marcas y modelos. Es idempotente: se puede correr en cada arranque. Sin
-esa clave el seed no corre — no hay contraseña por defecto, porque una contraseña por
-defecto que sobrevive a producción no la nota nadie hasta que es tarde.
+Definí `Seed:Password` y el arranque en Development siembra siete automotoras, sus
+usuarios, el catálogo de marcas y modelos, y el stock con noventa días de historia de
+demanda. Es idempotente: se puede correr en cada arranque. Sin esa clave el seed no corre
+— no hay contraseña por defecto, porque una contraseña por defecto que sobrevive a
+producción no la nota nadie hasta que es tarde.
+
+Cada automotora tiene un Owner y un Seller, con el slug en el mail:
 
 | Usuario | Rol | Entra a |
 | --- | --- | --- |
 | `owner@norte.uy` | Owner | Todo lo de Automotora Norte, incluida la gestión de vendedores |
 | `vendedor@norte.uy` | Seller | Vehículos y consultas de Automotora Norte |
-| `owner@sur.uy` / `vendedor@sur.uy` | Owner / Seller | Lo mismo, en Automotora Sur |
+| `owner@sur.uy`, `owner@costa.uy`, `owner@centenario.uy`, `owner@litoral.uy`, `owner@prado.uy`, `owner@estenia.uy` | Owner | Lo mismo, en las otras seis |
 | `super@automotoras.uy` | SuperAdmin | Cross-tenant, por `/api/admin/*` |
+| `nuevo@norte.uy` | Seller | Entra con contraseña provisoria: lo único que puede hacer es cambiarla |
+
+Todos usan la contraseña de `Seed:Password`.
+
+**Planes y cobranza.** Para que se vean todos los estados del ciclo de cobro, cuatro
+automotoras arrancan en un escenario distinto (las fechas son relativas al día en que
+corrió el seed, así que con el tiempo avanzan solas):
+
+| Automotora | Plan | Estado | Qué se puede probar |
+| --- | --- | --- | --- |
+| Norte | Full | Al día, con tres meses cobrados | Todo el producto; historial de cobros |
+| Sur | Demanda | Vence en 4 días | Aviso de vencimiento; sin benchmark |
+| Costa | Vidriera | Vencida hace 3 días, en gracia | Sitio arriba con aviso; reportes bloqueados por plan; tope de usuarios lleno |
+| Litoral | Demanda | Vencida hace 20 días | Sitio público en mantenimiento; panel y exportación andando |
+
+Centenario, Prado y Estenia quedan en Full al día.
+
+**Carga masiva.** En [`docs/ejemplos`](docs/ejemplos) hay un CSV que se importa sin errores
+contra el catálogo del seed (`stock-de-ejemplo.csv`) y otro con un error distinto en cada
+fila (`stock-con-errores.csv`), para ver la validación.
+
+**Son siete y no dos por el benchmark.** La comparación contra el mercado no publica nada
+por debajo de cinco automotoras además de la que pregunta, así que con dos o tres la
+pantalla dice —correctamente— que no hay muestra suficiente, y no hay forma de ver si el
+reporte funciona hasta tener clientes reales.
 
 ### Frontend
 
@@ -197,6 +262,12 @@ nada de ningún tenant.
 - **Contraseñas:** PBKDF2-HMAC-SHA256, 210.000 iteraciones, sal por contraseña. El hash
   guardado declara algoritmo, costo y sal, así que subir el costo más adelante no invalida
   las contraseñas existentes.
+- **Intentos de login:** dos frenos. Por cuenta, cinco fallos en quince minutos la dejan
+  frenada quince minutos, aunque después llegue la contraseña correcta
+  ([`FrenoDeLogin`](backend/Infrastructure/Auth/FrenoDeLogin.cs)); se mira antes de
+  hashear, así que tampoco le cuesta CPU al servidor. Por IP, veinte intentos por minuto
+  (`Seguridad:LoginsPorMinutoPorIp`). Los dos responden 429 con `Retry-After`. Viven en
+  memoria: un reciclado del app pool los pone en cero, y es un precio aceptable.
 
 ### Roles
 
@@ -241,15 +312,47 @@ nada de ningún tenant.
 | `GET /api/public/vehiculos/{id}` | Ficha, con el mensaje de WhatsApp ya armado |
 | `POST /api/public/events` | Registro de eventos, con límite de tasa por IP |
 | `GET /api/public/sitemap.xml` | Sitemap del tenant |
+| `POST /api/public/busquedas` | Lo escrito en el buscador de la portada, interpretado contra el catálogo |
+| `GET /robots.txt` | Apunta al sitemap de la automotora; en el dominio del SaaS no deja indexar nada |
 
 **SuperAdmin y jobs**
 
 | Endpoint | Quién | Qué hace |
 | --- | --- | --- |
 | `GET/POST/PUT /api/admin/tenants` | SuperAdmin | ABM de automotoras, con su Owner |
+| `POST /api/admin/tenants/{id}/verificar-dominio` | SuperAdmin | Comprueba que el dominio propio apunte acá y lo habilita |
+| `POST /api/admin/tenants/{id}/restablecer-password` | SuperAdmin | Contraseña provisoria para un usuario de la automotora: el camino del dueño que se olvidó la suya |
+| `GET/POST/PUT /api/admin/planes` | SuperAdmin | Catálogo de planes: precio, topes y qué incluye |
+| `GET /api/admin/cobranza` | SuperAdmin | Todas las automotoras con plan, vencimiento y uso, las más urgentes primero |
+| `GET/POST /api/admin/tenants/{id}/suscripcion` | SuperAdmin | Ver el historial, asignar o cambiar de plan |
+| `POST /api/admin/tenants/{id}/pagos` | SuperAdmin | Registrar un cobro; empuja el vencimiento y reactiva al instante |
+| `POST /api/admin/tenants/{id}/baja` | SuperAdmin | Cerrar la suscripción. El sitio queda en mantenimiento; no se borra nada |
+| `POST /api/admin/tenants/{id}/importacion` | SuperAdmin | Carga inicial de stock por CSV |
 | `/api/admin/catalogo/*` | SuperAdmin | ABM de marcas, modelos y versiones |
 | `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
 | `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
+| `GET /api/jobs/modelos-a-cotizar` | Cron externo | Qué modelos y años están publicados, para no cotizar el catálogo entero |
+| `POST /api/jobs/precios-de-mercado` | Cron externo | Snapshot diario de precios de referencia |
+| `POST /api/jobs/avisos-de-vencimiento` | Cron externo, una vez por día | Avisa por correo a los dueños por vencer, en gracia o suspendidos. Cada etapa se avisa una vez |
+
+**Plan, datos y carga masiva** — panel de la automotora
+
+| Endpoint | Quién | Qué hace |
+| --- | --- | --- |
+| `POST /api/auth/password` | Cualquier usuario | Cambiar la contraseña propia. Con una contraseña provisoria es lo único que la API permite |
+| `GET /api/tenant/plan` | Owner | Plan, uso contra los topes y estado del pago |
+| `GET /api/tenant/exportacion` | Owner | ZIP con todos los datos de la automotora, también con el sitio suspendido |
+| `GET /api/vehiculos/importacion/plantilla` | Owner, Seller | Plantilla CSV de stock |
+| `POST /api/vehiculos/importacion?confirmar=` | Owner | Valida un CSV fila por fila; con `confirmar=true` carga todo o nada |
+
+**Reportes de demanda** — solo Owner
+
+| Endpoint | Qué hace |
+| --- | --- |
+| `GET /api/reportes/demanda` | Por unidad publicada: días en góndola, vistas, consultas, ratio y señal |
+| `GET /api/reportes/busquedas-sin-resultado` | Las búsquedas vacías, agrupadas por lo que se buscaba |
+| `GET /api/reportes/sugerencias` | Qué conviene comprar, cruzando esa demanda contra el stock |
+| `GET /api/reportes/benchmark` | La automotora comparada contra la mediana del resto, anonimizada |
 
 ## Decisiones de fase 1
 
@@ -276,6 +379,90 @@ del producto, porque dicen qué le están pidiendo a la automotora que no tiene 
 listado sin filtros no se registra: sería ruido que después hay que descartar en cada
 reporte.
 
+## Decisiones de fase 2
+
+**La señal de cada unidad se calcula en el servidor.** "Precio alto", "sin visibilidad" y
+"estancado" son reglas de negocio con umbrales, declarados todos juntos en
+[`UmbralesDeDemanda`](backend/Core/Reportes/ReporteDtos.cs). El panel las pinta, no las
+decide: duplicar los umbrales en el cliente es garantizar que un día las dos pantallas
+digan cosas distintas del mismo vehículo.
+
+**Las búsquedas vacías se cuentan por visita, no por búsqueda.** Veinte búsquedas de una
+sola persona indecisa no son demanda; veinte de veinte personas sí. Y hacen falta al menos
+tres visitas distintas para que algo se convierta en una sugerencia de compra: con una
+sugerencia por cada curioso, la pantalla es ruido y la primera buena se pierde en el medio.
+
+**Una sugerencia cambia según el patio.** La misma búsqueda vacía significa "comprá" si no
+hay una sola unidad de eso publicada, y "revisá precio, año o fotos" si hay tres. Sugerir
+comprar cuando el stock ya existe es la forma más cara de equivocarse.
+
+**El precio de mercado no lo sale a buscar la API.** Un barrido de precios son cientos de
+llamadas salientes, y en shared hosting IIS cada una que se cuelga se lleva un hilo del app
+pool que atiende a todos los tenants. El script vive en
+[`tools/precios-de-mercado.mjs`](tools/precios-de-mercado.mjs), lo dispara el mismo cron que
+los otros jobs y postea el lote. Un snapshot con menos de tres publicaciones se rechaza: un
+precio de referencia equivocado es peor que ninguno, porque el que falta se nota y el que
+está mal se cree.
+
+**El precio de referencia se convierte a la moneda del aviso** con la cotización del día
+del snapshot, no con la de hoy. Los dos números tienen que quedar parados en la misma fecha:
+convertir un precio de mercado de la semana pasada al tipo de cambio de hoy mezcla la
+diferencia de precio con la del dólar, y el porcentaje que sale no es ninguna de las dos. Sin
+cotización aplicable no hay comparación, y se dice.
+
+**La API de búsqueda de MercadoLibre ya no es abierta.** Responde 403 sin token, así que el
+script necesita las credenciales de una aplicación creada en `developers.mercadolibre.com`
+(`ML_CLIENT_ID` y `ML_CLIENT_SECRET`); pide el access token en cada corrida, porque uno
+pegado a mano vence en horas y un cron diario lo encuentra siempre vencido.
+
+**Un dominio propio no sirve el sitio hasta que se verifica.** Cargar un dominio es
+declarar una intención; servirlo requiere haber comprobado que quien lo declaró lo
+controla. La comprobación es que el dominio resuelva a alguna de las IP de
+`Deploy:IpsPublicas`: para apuntar un dominio ahí hay que controlar su DNS, que es la
+definición práctica de ser su dueño, y de paso es la condición que igual tiene que cumplirse
+para que el sitio funcione. Sin la verificación, cualquier automotora puede escribir el
+dominio de otra empresa en su configuración y quedárselo para el día en que ese dominio
+apunte para acá. Cambiar el dominio invalida el sello anterior, y una verificación fallida
+no le baja el sitio a quien ya lo tenía andando.
+
+**El benchmark no se publica con muestra chica.** Hacen falta al menos cinco automotoras
+además de la que pregunta, y lo que sale es una mediana entre automotoras — nunca un
+extremo, nunca un nombre, nunca un id. Con dos competidores en un promedio, cada uno despeja
+al otro con una resta, y en un mercado chico sabe perfectamente quiénes son. Es el único
+endpoint de tenant que lee datos de otros tenants, y está solo en
+[`BenchmarkController`](backend/Api/Controllers/BenchmarkController.cs) para que esa frontera
+se pueda auditar abriendo un archivo.
+
+## Datos de desarrollo
+
+El seed no es sólo "algo para que las pantallas no estén vacías": es lo que permite juzgar
+si los reportes dicen algo. Tres decisiones que lo explican.
+
+**Cada modelo tiene sus fotos.** El stock sembrado sale con fotos del vehículo que
+realmente es, de archivos de licencia libre de Wikimedia Commons referenciados en
+[`FotosDeCatalogo`](backend/Infrastructure/Persistence/FotosDeCatalogo.cs). No son
+placeholders: un catálogo donde la Hilux se ve como un hatchback —o como un paisaje— no
+deja evaluar ninguna de las pantallas que se apoyan en él, porque el ojo descarta la ficha
+entera antes de leer el precio. Se guardan las dos URL, la de la ficha y la de la grilla, y
+no se deriva una de la otra: Commons sólo sirve los anchos que tiene generados para cada
+archivo, y cuáles son cambia de imagen en imagen.
+
+**El stock no es uniforme.** Los precios salen del valor a nuevo de la carrocería,
+depreciado por año, y los kilómetros acompañan la edad; una camioneta no puede costar menos
+que un hatchback. Y cada unidad se comporta distinto: la mayoría anda bien, algunas están
+caras —mucha gente que mira y nadie que pregunte— y otras no las ve nadie. Si todas
+convirtieran igual, la columna de señal diría "saludable" en todas las filas y no habría
+manera de saber si clasifica.
+
+**La demanda insatisfecha se concentra.** Las búsquedas sin resultado se agrupan en unos
+pocos modelos por automotora, como pasa de verdad. Repartidas al azar entre sesenta modelos
+no se repite ninguna combinación, ninguna llega al mínimo de visitas distintas, y la
+pantalla de sugerencias queda vacía por un artefacto del seed y no porque el reporte esté
+mal.
+
+Todo sale de un `Random` con semilla fija: los mismos datos en cada corrida, así que un
+número raro en una pantalla se puede reproducir.
+
 ## Variables de entorno
 
 ### Backend
@@ -291,6 +478,7 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | Clave | Variable de entorno | Para qué |
 | --- | --- | --- |
 | `ConnectionStrings:Default` | `ConnectionStrings__Default` | Conexión a MySQL. |
+| `Database:ServerVersion` | `Database__ServerVersion` | Versión del servidor, en el formato de Pomelo (`8.0.36-mysql`, `10.4.32-mariadb`). Sin valor, MySQL 8. |
 | `Jwt:Issuer` / `Jwt:Audience` | `Jwt__Issuer` / `Jwt__Audience` | Emisor y audiencia de los tokens. |
 | `Jwt:Secret` | `Jwt__Secret` | Clave de firma. **Obligatoria:** sin ella la API no arranca. Mínimo 32 caracteres, aleatoria. Nunca versionar. |
 | `Jwt:AccessTokenMinutes` | `Jwt__AccessTokenMinutes` | Vida del access token. |
@@ -301,13 +489,18 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | `Storage:Bucket` / `Storage:Endpoint` | `Storage__Bucket` / `Storage__Endpoint` | Bucket y endpoint S3-compatible (Cloudflare R2). |
 | `Storage:AccessKeyId` / `Storage:SecretAccessKey` | `Storage__AccessKeyId` / `Storage__SecretAccessKey` | Credenciales del object storage. Nunca versionar. |
 | `Jobs:Secret` | `Jobs__Secret` | Valor esperado en el header `X-Job-Secret` de `POST /api/jobs/{nombre}`. |
-| `Analytics:IpHashSalt` | `Analytics__IpHashSalt` | Sal para hashear las IPs de los eventos. Si queda vacía se usa `Jwt:Secret`. |
+| `Deploy:IpsPublicas` | `Deploy__IpsPublicas__0` | IP públicas de la aplicación. Es contra lo que se verifica un dominio propio; sin ellas, ningún dominio se puede verificar. |
+| `Cobranza:DiasDeAviso` / `Cobranza:DiasDeGracia` | `Cobranza__DiasDeAviso` / `Cobranza__DiasDeGracia` | Días de aviso antes del vencimiento (7) y de gracia después (10), con el sitio todavía publicado. |
+| `Correo:Host` / `Puerto` / `UsarSsl` / `Usuario` / `Password` / `Remitente` | `Correo__Host`, etc. | SMTP para los avisos de vencimiento. Sin `Host` y `Remitente` no sale ningún aviso. La contraseña nunca se versiona. |
+| `Analitica:MesesDeRetencion` | `Analitica__MesesDeRetencion` | Cuántos meses se guarda el detalle de visitas y búsquedas (24). Lo borra `POST /api/jobs/limpieza-de-analitica`. |
 | `Seed:Password` | `Seed__Password` | Contraseña de los usuarios de desarrollo. Solo se usa en Development; sin valor, el seed no corre. |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0` | Orígenes del frontend habilitados. En desarrollo, `http://localhost:5173`. |
 
 ### Frontend
 
-Copiá [`frontend/.env.example`](frontend/.env.example) a `frontend/.env`:
+Copiá [`frontend/.env.example`](frontend/.env.example) a `frontend/.env.development`.
+Tiene que ser `.env.development` y no `.env`: Vite lee `.env` también al compilar para
+producción, y el bundle terminaba apuntando a `localhost:5080`.
 
 | Variable | Para qué |
 | --- | --- |
@@ -347,3 +540,27 @@ respetar tres reglas desde el principio:
    cron externo.
 3. **Nada hardcodeado.** Toda configuración sale de variables de entorno o de `appsettings`
    sobrescribible.
+
+## Publicar
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools/publicar.ps1
+```
+
+Deja en `.publish/` la API compilada en Release con el frontend adentro de `wwwroot`, más
+el `web.config` de IIS. Ese contenido es lo que se sube al sitio del hosting. El script
+compila el frontend con `VITE_API_BASE_URL` vacía —la API está en el mismo origen— y
+falla si el bundle quedó apuntando a `localhost`.
+
+**Un solo sitio sirve las dos cosas.** Lo que no es `/api` ni un archivo devuelve el
+`index.html` del frontend, pero con el `<title>`, la descripción, la imagen de Open Graph,
+el color y el ícono de la automotora —y en la ficha, los del vehículo— ya puestos
+([`SitioDelFrontend`](backend/Api/Sitio/SitioDelFrontend.cs)). Es lo que hace que un auto
+compartido por WhatsApp aparezca con su foto y su precio: WhatsApp no ejecuta JavaScript.
+Un vehículo vendido o una automotora que no existe responden 404 con `noindex`; una
+suspendida, 503.
+
+Antes de subir una versión con migraciones nuevas, el SQL se genera con
+`migrations script --idempotent` (ver [Migraciones](#migraciones)) y se aplica desde el
+panel del hosting. La migración `CatalogoDeProduccion` carga el catálogo base de marcas y
+modelos; es idempotente y no toca lo que ya existe.

@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using AutomotoraSaaS.Api.Planes;
+using AutomotoraSaaS.Core.Planes;
+
 namespace AutomotoraSaaS.Api.Controllers;
 
 /// <summary>
@@ -30,12 +33,25 @@ public sealed class UsersController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IPasswordHasher _hasher;
     private readonly TimeProvider _reloj;
+    private readonly IPoliticaDePlan _plan;
 
-    public UsersController(AppDbContext db, IPasswordHasher hasher, TimeProvider reloj)
+    public UsersController(AppDbContext db, IPasswordHasher hasher, TimeProvider reloj, IPoliticaDePlan plan)
     {
         _db = db;
         _hasher = hasher;
         _reloj = reloj;
+        _plan = plan;
+    }
+
+    /// <summary>Si el plan admite un usuario activo más.</summary>
+    private async Task<ActionResult?> RechazoPorTopeAsync(CancellationToken cancellationToken)
+    {
+        var tenantId = User.TenantIdDelToken()
+                       ?? throw new InvalidOperationException("La gestión de usuarios requiere un tenant en el token.");
+
+        var situacion = await _plan.SituacionAsync(tenantId, cancellationToken).ConfigureAwait(false);
+
+        return situacion.ActivarOtroUsuario() is { } rechazo ? this.Rechazo(rechazo) : null;
     }
 
     [HttpGet]
@@ -44,7 +60,7 @@ public sealed class UsersController : ControllerBase
     {
         var usuarios = await _db.Users
             .OrderBy(u => u.Nombre)
-            .Select(u => new UsuarioDto(u.Id, u.TenantId, u.Email, u.Nombre, u.Rol.ToString(), u.Activo))
+            .Select(u => new UsuarioDto(u.Id, u.TenantId, u.Email, u.Nombre, u.Rol.ToString(), u.Activo, u.DebeCambiarPassword))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -86,6 +102,11 @@ public sealed class UsersController : ControllerBase
                 statusCode: StatusCodes.Status409Conflict);
         }
 
+        if (await RechazoPorTopeAsync(cancellationToken).ConfigureAwait(false) is { } rechazo)
+        {
+            return rechazo;
+        }
+
         var usuario = new User
         {
             // El tenant no se escribe a mano ni se acepta del cuerpo del request: lo sella
@@ -94,6 +115,9 @@ public sealed class UsersController : ControllerBase
             Nombre = request.Nombre.Trim(),
             Rol = RolUsuario.Seller,
             PasswordHash = _hasher.Hash(request.Password),
+
+            // La puso el dueño: el vendedor la cambia en su primer ingreso.
+            DebeCambiarPassword = true,
         };
 
         _db.Users.Add(usuario);
@@ -128,6 +152,14 @@ public sealed class UsersController : ControllerBase
                 statusCode: StatusCodes.Status409Conflict);
         }
 
+        // Reactivar a alguien ocupa un lugar del tope, igual que darlo de alta.
+        if (request.Activo
+            && !usuario.Activo
+            && await RechazoPorTopeAsync(cancellationToken).ConfigureAwait(false) is { } rechazo)
+        {
+            return rechazo;
+        }
+
         usuario.Nombre = request.Nombre.Trim();
         usuario.Activo = request.Activo;
 
@@ -154,6 +186,9 @@ public sealed class UsersController : ControllerBase
         }
 
         usuario.PasswordHash = _hasher.Hash(request.Password);
+
+        // Si el dueño le pone la contraseña a otro, es provisoria. La propia no.
+        usuario.DebeCambiarPassword = usuario.Id != User.IdDeUsuario();
 
         // Cambiar la contraseña cierra las sesiones abiertas del usuario. Si el motivo del
         // cambio es que la contraseña se filtró, dejar vivos los refresh tokens emitidos

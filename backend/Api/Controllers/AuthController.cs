@@ -1,7 +1,11 @@
 using AutomotoraSaaS.Api.Auth;
+using AutomotoraSaaS.Api.Filters;
+using System.Globalization;
 using AutomotoraSaaS.Core.Auth;
+using AutomotoraSaaS.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AutomotoraSaaS.Api.Controllers;
 
@@ -21,17 +25,21 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [PermitidoConPasswordProvisoria]
+    [EnableRateLimiting(LimitesDeLogin.Politica)]
     [ProducesResponseType(typeof(SesionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SesionDto>> Login(LoginRequest request, CancellationToken cancellationToken)
     {
         var resultado = await _auth.LoginAsync(request, cancellationToken).ConfigureAwait(false);
 
-        return resultado.Sesion is { } sesion ? Ok(sesion) : Rechazo(resultado.Error);
+        return resultado.Sesion is { } sesion ? Ok(sesion) : Rechazo(resultado.Error, resultado.ReintentarEn);
     }
 
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [PermitidoConPasswordProvisoria]
     [ProducesResponseType(typeof(SesionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<SesionDto>> Refresh(RefreshRequest request, CancellationToken cancellationToken)
@@ -50,6 +58,7 @@ public sealed class AuthController : ControllerBase
     /// </summary>
     [HttpPost("logout")]
     [AllowAnonymous]
+    [PermitidoConPasswordProvisoria]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Logout(RefreshRequest request, CancellationToken cancellationToken)
     {
@@ -71,6 +80,7 @@ public sealed class AuthController : ControllerBase
     /// </remarks>
     [HttpGet("me")]
     [Authorize]
+    [PermitidoConPasswordProvisoria]
     [ProducesResponseType(typeof(UsuarioDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public ActionResult<UsuarioDto> Me()
@@ -86,7 +96,46 @@ public sealed class AuthController : ControllerBase
             User.EmailDelToken() ?? string.Empty,
             User.NombreDelToken() ?? string.Empty,
             rol,
-            Activo: true));
+            Activo: true,
+            DebeCambiarPassword: User.TienePasswordProvisoria()));
+    }
+
+    /// <summary>
+    /// Cambio de la contraseña propia. Es lo único que se puede hacer con una contraseña
+    /// provisoria, y devuelve una sesión nueva sin esa marca.
+    /// </summary>
+    [HttpPost("password")]
+    [Authorize]
+    [PermitidoConPasswordProvisoria]
+    [ProducesResponseType(typeof(SesionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<SesionDto>> CambiarPassword(
+        CambiarPasswordPropiaRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (User.IdDeUsuario() is not { } id)
+        {
+            return Unauthorized();
+        }
+
+        var resultado = await _auth.CambiarPasswordPropiaAsync(id, request, cancellationToken).ConfigureAwait(false);
+
+        if (resultado.Sesion is { } sesion)
+        {
+            return Ok(sesion);
+        }
+
+        return resultado.Error switch
+        {
+            ErrorDeAutenticacion.PasswordRepetida => Problem(
+                detail: "La contraseña nueva tiene que ser distinta de la actual.",
+                statusCode: StatusCodes.Status400BadRequest),
+            ErrorDeAutenticacion.CredencialesInvalidas => Problem(
+                detail: "La contraseña actual no es correcta.",
+                statusCode: StatusCodes.Status400BadRequest),
+            _ => Rechazo(resultado.Error).Result!,
+        };
     }
 
     /// <summary>
@@ -94,8 +143,18 @@ public sealed class AuthController : ControllerBase
     /// existe" y "la contraseña no es esa". Decir cuál de las dos es convierte el login en
     /// un verificador de qué cuentas existen.
     /// </summary>
-    private ActionResult<SesionDto> Rechazo(ErrorDeAutenticacion? error)
+    private ActionResult<SesionDto> Rechazo(ErrorDeAutenticacion? error, TimeSpan? reintentarEn = null)
     {
+        if (error == ErrorDeAutenticacion.DemasiadosIntentos)
+        {
+            var minutos = Math.Max(1, (int)Math.Ceiling((reintentarEn ?? FrenoDeLogin.Ventana).TotalMinutes));
+            Response.Headers.RetryAfter = (minutos * 60).ToString(CultureInfo.InvariantCulture);
+
+            return Problem(
+                detail: $"Demasiados intentos fallidos con este email. Probá de nuevo en {minutos} {(minutos == 1 ? "minuto" : "minutos")}.",
+                statusCode: StatusCodes.Status429TooManyRequests);
+        }
+
         var detalle = error switch
         {
             ErrorDeAutenticacion.UsuarioInactivo => "El usuario está dado de baja.",
@@ -105,4 +164,19 @@ public sealed class AuthController : ControllerBase
 
         return Problem(detail: detalle, statusCode: StatusCodes.Status401Unauthorized);
     }
+}
+
+/// <summary>
+/// Tope de intentos de login por IP. El freno por cuenta está en <see cref="FrenoDeLogin"/>.
+/// </summary>
+/// <remarks>
+/// Veinte por minuto alcanzan para una oficina entera entrando a la mañana detrás de la
+/// misma IP, y le cortan a un script la posibilidad de recorrer una lista de emails. Se
+/// puede subir por configuración (<c>Seguridad:LoginsPorMinutoPorIp</c>).
+/// </remarks>
+public static class LimitesDeLogin
+{
+    public const string Politica = "login";
+
+    public const int LoginsPorMinutoPorDefecto = 20;
 }

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { api, ApiError } from '@shared/api/client'
 import { useSesion } from '@shared/auth/useSesion'
 import { Estado } from '@shared/ui/Estado'
-import { paraInputDate } from '@shared/ui/formato'
+import { etiqueta, paraInputDate } from '@shared/ui/formato'
 import { GaleriaDeFotos } from '@admin/GaleriaDeFotos'
 import { CambiarEstado } from '@admin/CambiarEstado'
+import { Aviso, Campo, Pagina, Seccion } from '@admin/ui/Pagina'
+import { EntradaNumerica } from '@admin/ui/EntradaNumerica'
 import type {
   GuardarVehiculoRequest,
   Marca,
@@ -183,13 +186,26 @@ export function VehiculoFormPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">
-          {esNuevo ? 'Cargar vehículo' : `${vehiculo?.marca ?? ''} ${vehiculo?.modelo ?? ''}`}
-        </h1>
-
-        {vehiculo && (
+    <Pagina
+      titulo={
+        <span className="flex flex-col gap-2">
+          <Link
+            to="/admin/vehiculos"
+            className="inline-flex w-fit items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800"
+          >
+            <ArrowLeft aria-hidden className="size-4" />
+            Vehículos
+          </Link>
+          {esNuevo ? 'Cargar vehículo' : `${vehiculo?.marca ?? ''} ${vehiculo?.modelo ?? ''} ${vehiculo?.anio ?? ''}`}
+        </span>
+      }
+      descripcion={
+        esNuevo
+          ? 'Primero los datos; las fotos se cargan en el paso siguiente.'
+          : 'Los cambios se ven en el sitio apenas los guardás.'
+      }
+      acciones={
+        vehiculo && (
           <CambiarEstado
             vehiculo={vehiculo}
             onCambio={(actualizado) => {
@@ -197,11 +213,12 @@ export function VehiculoFormPage() {
               setDatos((previos) => ({ ...previos, destacado: actualizado.destacado }))
             }}
           />
-        )}
-      </div>
-
+        )
+      }
+    >
       <form onSubmit={guardar} className="flex flex-col gap-5">
-        <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-2">
+        <Seccion titulo="El vehículo" descripcion="Marca y modelo salen del catálogo, para que las búsquedas y los reportes coincidan.">
+          <div className="grid gap-4 sm:grid-cols-2">
           <Campo etiqueta="Marca" errores={errores.ModeloId}>
             <select
               required
@@ -211,7 +228,7 @@ export function VehiculoFormPage() {
                 // Cambiar de marca invalida el modelo y la versión elegidos.
                 setDatos((previos) => ({ ...previos, modeloId: 0, versionId: null }))
               }}
-              className={entrada}
+              className="panel-entrada"
             >
               <option value="">Elegí una marca</option>
               {marcas.map((marca) => (
@@ -234,7 +251,7 @@ export function VehiculoFormPage() {
                   versionId: null,
                 }))
               }
-              className={entrada}
+              className="panel-entrada"
             >
               <option value="">Elegí un modelo</option>
               {modelos.map((modelo) => (
@@ -250,7 +267,7 @@ export function VehiculoFormPage() {
               value={datos.versionId ?? ''}
               disabled={!datos.modeloId || versiones.length === 0}
               onChange={(e) => cambiar('versionId', e.target.value ? Number(e.target.value) : null)}
-              className={entrada}
+              className="panel-entrada"
             >
               <option value="">Sin versión</option>
               {versiones.map((version) => (
@@ -267,18 +284,17 @@ export function VehiculoFormPage() {
               required
               value={datos.anio}
               onChange={(e) => cambiar('anio', Number(e.target.value))}
-              className={entrada}
+              className="panel-entrada"
             />
           </Campo>
 
           <Campo etiqueta="Kilometraje" errores={errores.Kilometraje}>
-            <input
-              type="number"
+            <EntradaNumerica
               required
-              min={0}
-              value={datos.kilometraje}
-              onChange={(e) => cambiar('kilometraje', Number(e.target.value))}
-              className={entrada}
+              decimales={false}
+              sufijo="km"
+              valor={datos.kilometraje}
+              onCambio={(valor) => cambiar('kilometraje', valor ?? 0)}
             />
           </Campo>
 
@@ -286,11 +302,11 @@ export function VehiculoFormPage() {
             <select
               value={datos.combustible}
               onChange={(e) => cambiar('combustible', e.target.value)}
-              className={entrada}
+              className="panel-entrada"
             >
               {(opciones?.combustibles ?? [datos.combustible]).map((valor) => (
                 <option key={valor} value={valor}>
-                  {valor}
+                  {etiqueta(valor)}
                 </option>
               ))}
             </select>
@@ -300,11 +316,11 @@ export function VehiculoFormPage() {
             <select
               value={datos.transmision}
               onChange={(e) => cambiar('transmision', e.target.value)}
-              className={entrada}
+              className="panel-entrada"
             >
               {(opciones?.transmisiones ?? [datos.transmision]).map((valor) => (
                 <option key={valor} value={valor}>
-                  {valor}
+                  {etiqueta(valor)}
                 </option>
               ))}
             </select>
@@ -314,7 +330,7 @@ export function VehiculoFormPage() {
             <input
               value={datos.color ?? ''}
               onChange={(e) => cambiar('color', e.target.value || null)}
-              className={entrada}
+              className="panel-entrada"
             />
           </Campo>
 
@@ -323,7 +339,7 @@ export function VehiculoFormPage() {
               type="number"
               value={datos.puertas ?? ''}
               onChange={(e) => cambiar('puertas', e.target.value ? Number(e.target.value) : null)}
-              className={entrada}
+              className="panel-entrada"
             />
           </Campo>
 
@@ -332,21 +348,20 @@ export function VehiculoFormPage() {
               placeholder="1.6"
               value={datos.motor ?? ''}
               onChange={(e) => cambiar('motor', e.target.value || null)}
-              className={entrada}
+              className="panel-entrada"
             />
           </Campo>
-        </section>
+          </div>
+        </Seccion>
 
-        <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-2">
+        <Seccion titulo="Precio y publicación">
+          <div className="grid gap-4 sm:grid-cols-2">
           <Campo etiqueta="Precio" errores={errores.Precio}>
-            <input
-              type="number"
+            <EntradaNumerica
               required
-              min={1}
-              step="0.01"
-              value={datos.precio || ''}
-              onChange={(e) => cambiar('precio', Number(e.target.value))}
-              className={entrada}
+              moneda={datos.moneda}
+              valor={datos.precio || null}
+              onCambio={(valor) => cambiar('precio', valor ?? 0)}
             />
           </Campo>
 
@@ -354,7 +369,7 @@ export function VehiculoFormPage() {
             <select
               value={datos.moneda}
               onChange={(e) => cambiar('moneda', e.target.value)}
-              className={entrada}
+              className="panel-entrada"
             >
               {(opciones?.monedas ?? [datos.moneda]).map((valor) => (
                 <option key={valor} value={valor}>
@@ -366,37 +381,35 @@ export function VehiculoFormPage() {
 
           {/* El precio de costo es del dueño. El servidor tampoco lo acepta de un Seller. */}
           {esOwner && (
-            <Campo etiqueta="Precio de costo" errores={errores.PrecioCosto}>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={datos.precioCosto ?? ''}
-                onChange={(e) =>
-                  cambiar('precioCosto', e.target.value ? Number(e.target.value) : null)
-                }
-                className={entrada}
+            <Campo etiqueta="Precio de costo" ayuda="Solo lo ven los dueños. No sale en el sitio." errores={errores.PrecioCosto}>
+              <EntradaNumerica
+                moneda={datos.moneda}
+                valor={datos.precioCosto}
+                onCambio={(valor) => cambiar('precioCosto', valor)}
               />
             </Campo>
           )}
 
-          <Campo etiqueta="Fecha de publicación" errores={errores.FechaPublicacion}>
+          <Campo etiqueta="Fecha de publicación" ayuda="Vacía, se toma la de hoy. Cuenta para los días en góndola." errores={errores.FechaPublicacion}>
             <input
               type="date"
               value={paraInputDate(datos.fechaPublicacion)}
               onChange={(e) => cambiar('fechaPublicacion', e.target.value || null)}
-              className={entrada}
+              className="panel-entrada"
             />
           </Campo>
 
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm transition hover:bg-slate-50 sm:col-span-2">
             <input
               type="checkbox"
               checked={datos.destacado}
               onChange={(e) => cambiar('destacado', e.target.checked)}
-              className="size-4"
+              className="mt-0.5 size-4 accent-emerald-600"
             />
-            Destacar en la home del sitio
+            <span>
+              <span className="block font-medium text-slate-900">Destacar en la home del sitio</span>
+              <span className="text-slate-500">Aparece primero, con una etiqueta de destacado.</span>
+            </span>
           </label>
 
           <Campo etiqueta="Descripción" className="sm:col-span-2" errores={errores.Descripcion}>
@@ -404,54 +417,30 @@ export function VehiculoFormPage() {
               rows={4}
               value={datos.descripcion ?? ''}
               onChange={(e) => cambiar('descripcion', e.target.value || null)}
-              className={entrada}
+              className="panel-entrada"
             />
           </Campo>
-        </section>
+          </div>
+        </Seccion>
 
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
             disabled={guardando}
-            className="rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="panel-boton"
           >
             {guardando ? 'Guardando…' : esNuevo ? 'Crear y cargar fotos' : 'Guardar cambios'}
           </button>
 
-          {mensaje && <p className="text-sm text-slate-600">{mensaje}</p>}
+          {mensaje && (
+            <Aviso nivel={mensaje === 'Guardado.' ? 'ok' : 'grave'}>{mensaje}</Aviso>
+          )}
         </div>
       </form>
 
       {!esNuevo && vehiculo && (
         <GaleriaDeFotos vehiculoId={vehiculo.id} fotos={fotos} onCambio={setFotos} />
       )}
-    </div>
-  )
-}
-
-const entrada =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400'
-
-function Campo({
-  etiqueta,
-  children,
-  errores,
-  className = '',
-}: {
-  etiqueta: string
-  children: React.ReactNode
-  errores?: string[]
-  className?: string
-}) {
-  return (
-    <label className={`block text-sm ${className}`}>
-      <span className="mb-1 block font-medium text-slate-700">{etiqueta}</span>
-      {children}
-      {errores?.map((error) => (
-        <span key={error} className="mt-1 block text-xs text-rose-600">
-          {error}
-        </span>
-      ))}
-    </label>
+    </Pagina>
   )
 }

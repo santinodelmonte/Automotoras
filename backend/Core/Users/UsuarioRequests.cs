@@ -15,3 +15,6 @@ public sealed record ActualizarUsuarioRequest(string Nombre, bool Activo);
 
 /// <summary>Cambio de contraseña de un usuario del tenant.</summary>
 public sealed record CambiarPasswordRequest(string Password);
+
+/// <summary>Contraseña provisoria que el SuperAdmin le pone a un usuario de una automotora.</summary>
+public sealed record RestablecerPasswordRequest(string Email, string Password);

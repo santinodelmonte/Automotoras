@@ -14,7 +14,7 @@ namespace AutomotoraSaaS.Api.MultiTenancy;
 ///   está adentro de la firma. Si el request además trae un slug en la ruta, se ignora:
 ///   permitir que el cliente proponga un tenant sería exactamente el agujero que este
 ///   middleware existe para cerrar.</item>
-///   <item><b>Sitio público.</b> Sin token, el tenant sale del <c>Host</c> (dominio
+///   <item><b>Sitio público.</b> Con token o sin él, el tenant sale del <c>Host</c> (dominio
 ///   propio de la automotora) o del slug de <c>/t/{slug}</c> en desarrollo, siempre
 ///   validado contra la tabla <c>tenants</c>. Si no matchea, 404: no existe un tenant por
 ///   defecto.</item>
@@ -45,19 +45,10 @@ public sealed class ResolucionDeTenantMiddleware
 
         var slug = SepararSlugDeLaRuta(context.Request);
 
-        if (context.User.Identity?.IsAuthenticated == true)
-        {
-            if (!ResolverDesdeElToken(context, tenantContext))
-            {
-                await Responder(context, StatusCodes.Status401Unauthorized,
-                    "El token no identifica ningún tenant.").ConfigureAwait(false);
-                return;
-            }
-
-            await _next(context).ConfigureAwait(false);
-            return;
-        }
-
+        // El sitio público se resuelve siempre por la dirección, haya token o no. El
+        // navegador de alguien con el panel abierto manda su token también acá, y tomar el
+        // tenant de ahí mostraba los autos de su automotora bajo la dirección de otra —y
+        // registraba sus visitas como eventos propios—.
         if (EsRutaPublica(context.Request.Path))
         {
             var tenantId = slug is not null
@@ -76,10 +67,46 @@ public sealed class ResolucionDeTenantMiddleware
                 return;
             }
 
+            // Suspendido por falta de pago: mantenimiento, no 404. La dirección es de la
+            // automotora y su reputación también; un 503 con Retry-After además le dice a
+            // los buscadores que es temporal y que no saquen el sitio del índice.
+            if (await resolvedor.SuspendidoAsync(tenantId.Value, context.RequestAborted).ConfigureAwait(false)
+                is { } nombre)
+            {
+                await ResponderMantenimiento(context, nombre).ConfigureAwait(false);
+                return;
+            }
+
             tenantContext.Resolver(tenantId.Value);
+            await _next(context).ConfigureAwait(false);
+            return;
+        }
+
+        if (context.User.Identity?.IsAuthenticated == true
+            && !ResolverDesdeElToken(context, tenantContext))
+        {
+            await Responder(context, StatusCodes.Status401Unauthorized,
+                "El token no identifica ningún tenant.").ConfigureAwait(false);
+            return;
         }
 
         await _next(context).ConfigureAwait(false);
+    }
+
+    /// <summary>El <c>type</c> que el frontend reconoce para mostrar la página de mantenimiento.</summary>
+    public const string TipoMantenimiento = "sitio-en-mantenimiento";
+
+    private static Task ResponderMantenimiento(HttpContext context, string nombre)
+    {
+        context.Response.Headers.RetryAfter = "86400";
+
+        return Results.Problem(
+                type: TipoMantenimiento,
+                title: "Sitio en mantenimiento",
+                detail: $"El sitio de {nombre} está en mantenimiento. Volvé a intentar más tarde.",
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                extensions: new Dictionary<string, object?> { ["automotora"] = nombre })
+            .ExecuteAsync(context);
     }
 
     /// <summary>

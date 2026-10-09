@@ -81,7 +81,7 @@ public static class MapeosDeVehiculo
             vehiculo.Moneda.ToString(),
             vehiculo.Estado.ToString(),
             vehiculo.Destacado,
-            Portada(vehiculo)?.Url,
+            PortadaParaGrilla(vehiculo),
             DiasEnGondola(vehiculo.FechaPublicacion, vehiculo.FechaVenta, ahora),
             vehiculo.FechaPublicacion);
     }
@@ -102,7 +102,7 @@ public static class MapeosDeVehiculo
             vehiculo.Moneda.ToString(),
             vehiculo.Combustible.ToString(),
             vehiculo.Transmision.ToString(),
-            Portada(vehiculo)?.Url,
+            PortadaParaGrilla(vehiculo),
             vehiculo.Destacado);
     }
 
@@ -151,6 +151,26 @@ public static class MapeosDeVehiculo
 
         return vehiculo.Fotos.FirstOrDefault(f => f.EsPortada)
                ?? vehiculo.Fotos.OrderBy(f => f.Orden).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// La portada en tamaño de grilla: la miniatura si existe, y si no la imagen entera.
+    /// </summary>
+    /// <remarks>
+    /// Un listado son doce tarjetas del tamaño de una estampilla. Servirlas con la imagen
+    /// de ficha es bajar varios megabytes para pintar unos pocos miles de píxeles, y el
+    /// costo se lo lleva entero el comprador que entra desde el celular con datos —que es
+    /// la mayoría del tráfico. La ficha sí usa la imagen grande: ahí se mira.
+    /// <para>
+    /// Con caída a <see cref="VehiculoFoto.Url"/> porque la miniatura es opcional: una foto
+    /// vieja, o subida por un camino que no la generó, no puede dejar la tarjeta en blanco.
+    /// </para>
+    /// </remarks>
+    public static string? PortadaParaGrilla(Vehiculo vehiculo)
+    {
+        var portada = Portada(vehiculo);
+
+        return portada is null ? null : portada.UrlThumb ?? portada.Url;
     }
 
     private static IReadOnlyList<VehiculoFotoDto> Galeria(Vehiculo vehiculo)

@@ -18,6 +18,7 @@ public static class MapeosDeUsuario
             usuario.Email,
             usuario.Nombre,
             usuario.Rol.ToString(),
-            usuario.Activo);
+            usuario.Activo,
+            usuario.DebeCambiarPassword);
     }
 }

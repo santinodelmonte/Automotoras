@@ -58,6 +58,54 @@ public sealed class AutenticacionTests : IClassFixture<FabricaDeApi>
         Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
     }
 
+    /// <summary>
+    /// Pasados los fallos permitidos, la cuenta queda frenada aunque después llegue la
+    /// contraseña correcta: si no, el freno solo demoraría a quien adivina.
+    /// </summary>
+    [Fact]
+    public async Task Tras_cinco_fallos_la_cuenta_queda_frenada_aun_con_la_contrasena_correcta()
+    {
+        const string email = "frenado@norte.uy";
+        _api.AgregarVendedorDeNorte(email);
+        using var cliente = _api.CreateClient();
+
+        for (var i = 0; i < 5; i++)
+        {
+            var fallo = await cliente.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "no-es-esta-1"));
+            Assert.Equal(HttpStatusCode.Unauthorized, fallo.StatusCode);
+        }
+
+        var respuesta = await cliente.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, FabricaDeApi.Password));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, respuesta.StatusCode);
+        Assert.NotNull(respuesta.Headers.RetryAfter);
+    }
+
+    /// <summary>Equivocarse un par de veces y entrar no deja deuda para la próxima.</summary>
+    [Fact]
+    public async Task Un_login_correcto_borra_los_fallos_anteriores()
+    {
+        const string email = "distraido@norte.uy";
+        _api.AgregarVendedorDeNorte(email);
+        using var cliente = _api.CreateClient();
+
+        for (var i = 0; i < 4; i++)
+        {
+            await cliente.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "no-es-esta-1"));
+        }
+
+        await _api.LoginAsync(email);
+
+        for (var i = 0; i < 4; i++)
+        {
+            await cliente.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "no-es-esta-1"));
+        }
+
+        var respuesta = await cliente.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, FabricaDeApi.Password));
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+    }
+
     [Fact]
     public async Task Un_usuario_dado_de_baja_no_puede_entrar()
     {

@@ -55,8 +55,8 @@ Monorepo:
 ```
 
 > **Avance:** pasos 0 (esqueleto), 2 (modelo de datos), 3 (autenticación, roles y
-> resolución de tenant) y 4 (features de fase 1) están hechos. Lo que sigue es la fase 2:
-> los reportes de demanda, que los datos que ya se están acumulando alimentan.
+> resolución de tenant), 4 (features de fase 1) y 5 (fase 2) están hechos. De la fase 2
+> falta únicamente la automatización de dominios propios.
 >
 > Desvíos respecto de este documento, decididos durante la implementación:
 > - Se agregó la tabla `solicitudes_modelo`, que no está en la lista de tablas pero es
@@ -74,6 +74,11 @@ Monorepo:
 > - El endpoint de gestión de usuarios (`/api/users`) se adelantó al paso 3: es el recurso
 >   de tenant que hacía falta para escribir el test de aislamiento end-to-end que pide el
 >   criterio de aceptación número uno.
+> - El tracking es anónimo: de la visita se guarda solo un `session_id` al azar que vive en
+>   `sessionStorage` y muere con la pestaña. `ip_hash`, `user_agent` y `referer` se
+>   eliminaron (migración `QuitarDatosDeVisita`): ningún reporte los usaba y eran datos
+>   personales sin finalidad. El detalle de más de 24 meses lo borra
+>   `POST /api/jobs/limpieza-de-analitica`. Lo que sigue sobre `localStorage` es historia.
 > - El `session_id` del tracking lo genera y guarda el cliente en `localStorage`, no una
 >   cookie de primera parte como pide el brief. El sitio y la API viven en orígenes
 >   distintos —y con dominio propio por automotora eso no cambia—, así que una cookie
@@ -93,6 +98,37 @@ Monorepo:
 > - El job de cotizaciones recibe el valor en el cuerpo del request en vez de salir a
 >   buscarlo. En shared hosting IIS una llamada saliente colgada se lleva un hilo del app
 >   pool que atiende a todos los tenants, y el cron externo ya tiene que existir igual.
+>
+> Desvíos de la fase 2:
+> - Se agregó la tabla `precios_de_mercado`, que el brief no enumera pero que la línea
+>   "snapshots diarios en tabla propia" pide. Es global y no por tenant: lo que se pide por
+>   un Corolla 2018 es lo mismo mirado desde cualquier automotora.
+> - La consulta a MercadoLibre no vive en la API sino en `tools/precios-de-mercado.mjs`,
+>   por el mismo motivo que el job de cotizaciones, multiplicado: un barrido de precios son
+>   cientos de llamadas salientes en vez de una.
+> - **La "API pública de MercadoLibre" que nombra el brief ya no es pública.** Hoy responde
+>   403 a cualquier búsqueda sin token, verificado contra el endpoint real. El script pide
+>   el access token con las credenciales de una aplicación de MercadoLibre; sin esas
+>   credenciales, la tabla de precios de referencia queda vacía y el reporte lo dice en vez
+>   de inventar un número.
+> - El precio de referencia se convierte a la moneda del aviso con la cotización del día del
+>   snapshot. Sin eso, la mitad del stock uruguayo —el que se publica en pesos— no tenía
+>   comparación posible contra una referencia en dólares.
+> - El benchmark cross-tenant obligó a la única excepción a la regla de que solo
+>   `/api/admin/*` lee cross-tenant. Está acotada a un controller propio, devuelve
+>   exclusivamente medianas entre automotoras y no publica nada por debajo de cinco
+>   automotoras aportando. Con las tres del seed de desarrollo, la pantalla dice que no hay
+>   muestra suficiente: es lo correcto, no un error.
+> - El reporte de demanda cubre lo disponible y lo reservado. Un pausado o un vendido con
+>   cero vistas no dice que nadie lo quiera, dice que nadie lo pudo ver, y mezclarlos
+>   correría todos los promedios hacia abajo.
+> - **Los dominios propios están a medio camino, y es deliberado.** Lo que sí es código
+>   está hecho: un dominio no sirve el sitio hasta que se verifica que apunta a la
+>   aplicación, la verificación es un endpoint del SuperAdmin, y cambiar el dominio invalida
+>   el sello. Lo que falta es la otra mitad —emitir el certificado TLS y dar de alta el
+>   binding en el servidor web sin intervención—, y eso no tiene API en SmarterASP.NET: se
+>   hace desde su panel. Automatizarlo es una decisión de infraestructura (mover el hosting,
+>   o poner adelante un proxy con TLS automático) antes que de código.
 
 ## Paso 0 — Esqueleto ejecutable ✅ hecho
 
@@ -300,7 +336,7 @@ un mínimo de N registros para publicarse.
 - CRUD de marcas, modelos y versiones
 - Aprobación de solicitudes de alta de modelos
 
-### Fase 2 — no construir todavía, pero dejar el modelo de datos preparado
+### Fase 2 — hecha, salvo los dominios propios automatizados
 
 - Reportes de demanda: días en góndola por vehículo, ratio consultas/vistas, vehículos con
   muchas vistas y pocas consultas (señal de precio alto), búsquedas sin resultados

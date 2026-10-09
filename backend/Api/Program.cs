@@ -3,6 +3,7 @@ using System.Threading.RateLimiting;
 using AutomotoraSaaS.Api.Controllers;
 using AutomotoraSaaS.Api.Filters;
 using AutomotoraSaaS.Api.MultiTenancy;
+using AutomotoraSaaS.Api.Sitio;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Infrastructure;
 using AutomotoraSaaS.Infrastructure.Auth;
@@ -99,6 +100,29 @@ builder.Services.AddRateLimiter(options =>
             // requests de métricas solo sostiene conexiones abiertas para nada.
             QueueLimit = 0,
         }));
+
+    var loginsPorMinuto = builder.Configuration.GetValue(
+        "Seguridad:LoginsPorMinutoPorIp", LimitesDeLogin.LoginsPorMinutoPorDefecto);
+
+    options.AddPolicy(LimitesDeLogin.Politica, contexto => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: contexto.Connection.RemoteIpAddress?.ToString() ?? "sin-ip",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = loginsPorMinuto,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+
+    options.OnRejected = (contexto, _) =>
+    {
+        if (contexto.Lease.TryGetMetadata(MetadataName.RetryAfter, out var espera))
+        {
+            contexto.HttpContext.Response.Headers.RetryAfter =
+                ((int)Math.Ceiling(espera.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return ValueTask.CompletedTask;
+    };
 });
 
 // Errores en formato ProblemDetails, uno solo para toda la API: los que devuelven los
@@ -107,7 +131,11 @@ builder.Services.AddProblemDetails();
 
 builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
 
-builder.Services.AddControllers(options => options.Filters.Add<ValidacionFluentFilter>());
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<ValidacionFluentFilter>();
+    options.Filters.Add<PasswordProvisoriaFilter>();
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -134,6 +162,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<PlantillaDelSitio>();
 
 var app = builder.Build();
 
@@ -150,6 +179,19 @@ if (app.Environment.IsDevelopment())
 }
 
 ServirImagenesLocales(app);
+
+// El frontend compilado, publicado en wwwroot. Los archivos de /assets llevan el hash en
+// el nombre, así que se pueden cachear para siempre: un deploy nuevo cambia el nombre.
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = archivo =>
+    {
+        if (archivo.Context.Request.Path.StartsWithSegments("/assets", StringComparison.Ordinal))
+        {
+            archivo.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        }
+    },
+});
 
 app.UseCors(FrontendCorsPolicy);
 
@@ -170,6 +212,11 @@ app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Lo que no es API ni archivo es una página del frontend: sale el index.html con las
+// etiquetas de la automotora o del vehículo ya puestas (ver SitioDelFrontend).
+app.MapGet("/robots.txt", SitioDelFrontend.RobotsAsync);
+app.MapFallback(SitioDelFrontend.ServirAsync);
 
 app.Run();
 

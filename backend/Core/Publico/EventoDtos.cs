@@ -47,3 +47,26 @@ public sealed class RegistrarEventoRequestValidator : AbstractValidator<Registra
         => Enumeraciones.ParsearOpcional<TipoEvento>(tipo)
             is TipoEvento.ViewFicha or TipoEvento.ClickWhatsapp or TipoEvento.ClickTelefono;
 }
+
+/// <summary>Lo que se escribió en el buscador de la portada.</summary>
+/// <param name="Texto">El texto tal cual, sin interpretar.</param>
+/// <param name="Confirmada">
+/// <c>true</c> si el visitante apretó "Buscar"; <c>false</c> si dejó de escribir y se
+/// quedó mirando el aviso de que no hay.
+/// </param>
+public sealed record BusquedaDeTextoRequest(string Texto, bool Confirmada, string? SessionId);
+
+public sealed class BusquedaDeTextoRequestValidator : AbstractValidator<BusquedaDeTextoRequest>
+{
+    public const int LargoMaximo = 80;
+
+    public BusquedaDeTextoRequestValidator()
+    {
+        RuleFor(x => x.Texto)
+            .Must(t => !string.IsNullOrWhiteSpace(t) && t.Trim().Length >= 2)
+            .WithMessage("La búsqueda está vacía.")
+            .MaximumLength(LargoMaximo);
+
+        RuleFor(x => x.SessionId).MaximumLength(64);
+    }
+}

@@ -30,6 +30,24 @@ public sealed class SitioPublicoTests : IClassFixture<FabricaDeApi>
         Assert.Equal("#059669", tenant.ColorPrimario);
     }
 
+    /// <summary>
+    /// El navegador de alguien con el panel abierto manda su token también al sitio
+    /// público. La automotora tiene que salir de la dirección, nunca del token: si no, el
+    /// dueño de Norte ve sus propios autos bajo la dirección de Sur.
+    /// </summary>
+    [Theory]
+    [InlineData(FabricaDeApi.EmailOwnerNorte)]
+    [InlineData(FabricaDeApi.EmailSuperAdmin)]
+    public async Task Con_sesion_abierta_el_sitio_publico_resuelve_por_la_direccion(string email)
+    {
+        using var cliente = await _api.ClienteDeAsync(email);
+
+        var tenant = await cliente.GetFromJsonAsync<TenantPublicoDto>("/t/sur/api/public/tenant");
+
+        Assert.NotNull(tenant);
+        Assert.Equal("sur", tenant.Slug);
+    }
+
     [Fact]
     public async Task El_dominio_propio_resuelve_la_automotora()
     {

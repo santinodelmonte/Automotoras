@@ -18,6 +18,18 @@ public class Tenant : ICreatedAt
     /// <summary>Dominio propio de la automotora. Único cuando no es nulo.</summary>
     public string? DominioCustom { get; set; }
 
+    /// <summary>
+    /// Cuándo se comprobó que el dominio apunta acá. Nulo mientras no se haya verificado.
+    /// </summary>
+    /// <remarks>
+    /// El sitio público no resuelve por un dominio sin verificar. Cargar un dominio es
+    /// declarar una intención; servirlo es otra cosa, y en el medio va la comprobación de
+    /// que quien lo declaró efectivamente lo controla. Se guarda la fecha y no un booleano
+    /// porque un dominio se puede dejar de apuntar sin que nadie avise, y saber de cuándo
+    /// es la última comprobación es lo que permite volver a hacerla.
+    /// </remarks>
+    public DateTime? DominioVerificadoEn { get; set; }
+
     public string? LogoUrl { get; set; }
 
     /// <summary>Color en formato <c>#RRGGBB</c>.</summary>

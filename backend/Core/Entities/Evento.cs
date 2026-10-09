@@ -26,14 +26,16 @@ public class Evento : ITenantEntity, ICreatedAt
 
     public TipoEvento Tipo { get; set; }
 
-    /// <summary>Cookie de primera parte. Permite agrupar la actividad de una visita.</summary>
+    /// <summary>
+    /// Identificador al azar de la visita, que vive lo que la pestaña abierta. Permite
+    /// contar personas distintas sin poder seguir a nadie de un día para otro.
+    /// </summary>
+    /// <remarks>
+    /// Es lo único de la visita que se guarda. La IP, el navegador y la página de origen
+    /// se guardaban y ningún reporte los usaba: eran datos personales sin ninguna
+    /// finalidad, que es justo lo que la Ley 18.331 pide no tener.
+    /// </remarks>
     public string? SessionId { get; set; }
-
-    /// <summary>Hash de la IP. Nunca se guarda la IP en claro.</summary>
-    public string? IpHash { get; set; }
-
-    public string? UserAgent { get; set; }
-    public string? Referer { get; set; }
 
     /// <summary>UTC.</summary>
     public DateTime CreatedAt { get; set; }

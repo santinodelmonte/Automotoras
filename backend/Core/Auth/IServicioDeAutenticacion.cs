@@ -23,4 +23,13 @@ public interface IServicioDeAutenticacion
     /// existe no es un error para quien llama.
     /// </summary>
     Task CerrarSesionAsync(string refreshToken, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cambia la contraseña del propio usuario, cierra sus otras sesiones y abre una nueva,
+    /// ya sin la marca de contraseña provisoria.
+    /// </summary>
+    Task<ResultadoDeAutenticacion> CambiarPasswordPropiaAsync(
+        int userId,
+        CambiarPasswordPropiaRequest request,
+        CancellationToken cancellationToken = default);
 }

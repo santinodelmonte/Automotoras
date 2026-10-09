@@ -12,6 +12,13 @@ export interface ProblemDetails {
   detail?: string
   instance?: string
   errors?: Record<string, string[]>
+  /** Límite del plan (`type: 'limite-del-plan'`): qué recurso, el tope y el uso actual. */
+  recurso?: string
+  plan?: string | null
+  tope?: number | null
+  uso?: number | null
+  /** Sitio en mantenimiento (`type: 'sitio-en-mantenimiento'`): de qué automotora. */
+  automotora?: string
 }
 
 /** Una página de resultados, con el total para pintar el paginador. */
@@ -37,6 +44,8 @@ export interface Usuario {
   nombre: string
   rol: Rol
   activo: boolean
+  /** La contraseña la puso otra persona: hay que cambiarla antes de usar el panel. */
+  debeCambiarPassword?: boolean
 }
 
 /** Sesión abierta: el par de tokens y a quién pertenecen. */
@@ -320,6 +329,13 @@ export interface RegistrarEventoRequest {
   sessionId: string | null
 }
 
+/** Lo escrito en el buscador de la portada. `confirmada` si se apretó "Buscar". */
+export interface BusquedaDeTextoRequest {
+  texto: string
+  confirmada: boolean
+  sessionId: string | null
+}
+
 // ---------------------------------------------------------------- panel
 
 export interface ConfiguracionDeTenant {
@@ -368,6 +384,119 @@ export interface Dashboard {
   masVistos: VehiculoMasVisto[]
 }
 
+// ------------------------------------------------------------------ reportes
+
+/**
+ * La lectura de una unidad en una palabra, tal como la calcula el servidor.
+ *
+ * Se decide en el backend y no acá: es una regla de negocio con umbrales, y duplicarla en
+ * el cliente sería garantizar que un día el panel y la API digan cosas distintas del
+ * mismo vehículo.
+ */
+export type SenalDeDemanda =
+  | 'SinDatos'
+  | 'Saludable'
+  | 'PrecioAlto'
+  | 'SinVisibilidad'
+  | 'Estancado'
+
+export interface DemandaDeVehiculo {
+  vehiculoId: number
+  marca: string
+  modelo: string
+  anio: number
+  estado: EstadoVehiculo
+  precio: number
+  moneda: string
+  fotoPortadaUrl: string | null
+  diasEnGondola: number
+  vistas: number
+  consultas: number
+  consultasPorCienVistas: number
+  senal: SenalDeDemanda
+  /** Mediana de lo que se pide en el mercado por ese modelo y año. `null` hasta que el job de precios corra. */
+  precioDeMercado: number | null
+  /** Porcentaje por encima (positivo) o por debajo del mercado. */
+  diferenciaConElMercado: number | null
+  /** Día del snapshot: un precio de referencia sin fecha se compara como si fuera de hoy. */
+  precioDeMercadoAl: string | null
+}
+
+export interface ResumenDeDemanda {
+  dias: number
+  vehiculosPublicados: number
+  vistas: number
+  consultas: number
+  consultasPorCienVistas: number
+  busquedasSinResultado: number
+  diasEnGondolaPromedio: number
+  diasEnGondolaMediana: number
+  vendidosEnElPeriodo: number
+  diasHastaLaVentaPromedio: number | null
+}
+
+export interface ReporteDeDemanda {
+  resumen: ResumenDeDemanda
+  vehiculos: DemandaDeVehiculo[]
+}
+
+export interface BusquedaSinResultado {
+  marcaId: number | null
+  marca: string | null
+  modeloId: number | null
+  modelo: string | null
+  carroceria: string | null
+  anioDesde: number | null
+  anioHasta: number | null
+  moneda: string | null
+  precioDesde: number | null
+  precioHasta: number | null
+  presupuestoTipico: number | null
+  veces: number
+  sesiones: number
+  ultimaVez: string
+  /** Lo que se escribió en el buscador, cuando no se reconoció marca ni modelo. */
+  texto: string | null
+}
+
+/** `Comprar` cuando no hay una sola unidad de eso; si hay, el problema es otro. */
+export type TipoDeSugerencia = 'Comprar' | 'RevisarLoQueTenes'
+
+export interface SugerenciaDeCompra {
+  tipo: TipoDeSugerencia
+  marcaId: number | null
+  marca: string | null
+  modeloId: number | null
+  modelo: string | null
+  carroceria: string | null
+  anioDesde: number | null
+  anioHasta: number | null
+  moneda: string | null
+  presupuestoTipico: number | null
+  visitas: number
+  busquedas: number
+  ultimaVez: string
+  unidadesEnStock: number
+}
+
+export interface MetricaComparada {
+  propio: number | null
+  /** Mediana entre automotoras. Nunca un extremo: un extremo es el dato de una sola con otro nombre. */
+  mercado: number | null
+  mejorCuandoBaja: boolean
+}
+
+export interface Benchmark {
+  dias: number
+  /** `false` mientras la muestra sea chica: no se publica un agregado que delate al vecino. */
+  disponible: boolean
+  motivo: string | null
+  automotorasEnLaMuestra: number
+  diasEnGondola: MetricaComparada | null
+  consultasPorCienVistas: MetricaComparada | null
+  diasHastaLaVenta: MetricaComparada | null
+}
+
 // ---------------------------------------------------------------- superadmin
 
 export interface TenantAdmin {
@@ -385,6 +514,17 @@ export interface TenantAdmin {
   createdAt: string
   usuarios: number
   vehiculos: number
+  /** Cuándo se comprobó que el dominio apunta acá. `null` mientras no se verificó: hasta entonces no sirve el sitio. */
+  dominioVerificadoEn: string | null
+}
+
+export interface VerificacionDeDominio {
+  resultado: 'Verificado' | 'NoResuelve' | 'ApuntaAOtroLado' | 'SinDominio' | 'SinIpsDeclaradas'
+  detalle: string
+  verificadoEn: string | null
+  /** A dónde resuelve hoy. Viaja sobre todo cuando falla: sin esto no hay con qué comparar lo que se cargó. */
+  apuntaA: string[]
+  deberiaApuntarA: string[]
 }
 
 export interface CrearTenantRequest {
@@ -394,6 +534,13 @@ export interface CrearTenantRequest {
   emailDelOwner: string
   nombreDelOwner: string
   passwordDelOwner: string
+  /** Código del plan. Sin él, el servidor asigna el plan por defecto. */
+  plan?: string | null
+  colorPrimario?: string | null
+  colorSecundario?: string | null
+  whatsapp?: string | null
+  telefono?: string | null
+  direccion?: string | null
 }
 
 export interface ActualizarTenantRequest {
@@ -401,6 +548,115 @@ export interface ActualizarTenantRequest {
   nombre: string
   dominioCustom: string | null
   activo: boolean
+}
+
+// ---------------------------------------------------------------- Planes y cobranza
+
+export type EstadoDeCobro = 'Vigente' | 'PorVencer' | 'Gracia' | 'Suspendido'
+
+export interface Plan {
+  id: number
+  codigo: string
+  nombre: string
+  precioMensual: number
+  moneda: string
+  /** Nulo es sin límite. */
+  maxVehiculos: number | null
+  maxUsuarios: number | null
+  incluyeReportes: boolean
+  incluyeBenchmark: boolean
+  incluyeDominioPropio: boolean
+  horasSoporteMes: number
+  activo: boolean
+}
+
+export type GuardarPlanRequest = Omit<Plan, 'id'>
+
+export interface Uso {
+  usados: number
+  tope: number | null
+  /** Pasó el 80 % del tope. */
+  cercaDelTope: boolean
+}
+
+export interface SituacionDelPlan {
+  plan: Plan | null
+  estado: EstadoDeCobro
+  pagaHasta: string | null
+  /** Cero es "vence hoy"; negativo, días vencido. */
+  diasParaVencer: number | null
+  vehiculos: Uso
+  usuarios: Uso
+}
+
+export interface Suscripcion {
+  id: number
+  plan: Plan
+  inicio: string
+  fin: string | null
+  pagaHasta: string
+  motivoDeBaja: string | null
+}
+
+export interface Pago {
+  id: number
+  suscripcionId: number
+  fecha: string
+  monto: number
+  moneda: string
+  periodoDesde: string
+  periodoHasta: string
+  medio: string
+  comprobante: string | null
+  nota: string | null
+}
+
+export interface SuscripcionDeTenant {
+  tenantId: number
+  nombre: string
+  situacion: SituacionDelPlan
+  vigente: Suscripcion | null
+  historial: Suscripcion[]
+  pagos: Pago[]
+}
+
+export interface FilaDeCobranza {
+  tenantId: number
+  nombre: string
+  slug: string
+  activo: boolean
+  plan: string | null
+  pagaHasta: string | null
+  diasParaVencer: number | null
+  estado: EstadoDeCobro
+  vehiculos: Uso
+  usuarios: Uso
+}
+
+export interface RegistrarPagoRequest {
+  fecha: string
+  monto: number
+  /** Sin él, cubre desde el día siguiente al último pago. */
+  periodoDesde: string | null
+  periodoHasta: string
+  medio: string
+  moneda?: string | null
+  comprobante?: string | null
+  nota?: string | null
+}
+
+export interface ErrorDeImportacion {
+  /** Línea del archivo, contando el encabezado. Cero es un error del archivo entero. */
+  fila: number
+  columna: string | null
+  mensaje: string
+}
+
+export interface ResultadoDeImportacion {
+  filas: number
+  validas: number
+  errores: ErrorDeImportacion[]
+  importados: number
 }
 
 export interface ResolverSolicitudRequest {

@@ -58,6 +58,13 @@ public sealed class GeneradorDeTokens
             claims[ClaimsDeLaApp.TenantId] = tenantId.ToString(CultureInfo.InvariantCulture);
         }
 
+        // Va firmado adentro del token: con una contraseña provisoria la API no deja hacer
+        // nada más que cambiarla, y eso no puede depender de lo que diga el cliente.
+        if (usuario.DebeCambiarPassword)
+        {
+            claims[ClaimsDeLaApp.PasswordProvisoria] = "1";
+        }
+
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = _opciones.Issuer,

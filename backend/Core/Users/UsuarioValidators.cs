@@ -38,6 +38,18 @@ public sealed class ActualizarUsuarioRequestValidator : AbstractValidator<Actual
     }
 }
 
+public sealed class RestablecerPasswordRequestValidator : AbstractValidator<RestablecerPasswordRequest>
+{
+    public RestablecerPasswordRequestValidator()
+    {
+        RuleFor(x => x.Email).NotEmpty().EmailAddress();
+
+        RuleFor(x => x.Password)
+            .Must(PoliticaDePassword.EsAceptable)
+            .WithMessage(PoliticaDePassword.Mensaje);
+    }
+}
+
 public sealed class CambiarPasswordRequestValidator : AbstractValidator<CambiarPasswordRequest>
 {
     public CambiarPasswordRequestValidator()

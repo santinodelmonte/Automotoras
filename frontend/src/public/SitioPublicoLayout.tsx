@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react'
-import { Link, Outlet, useParams } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Outlet, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { api, ApiError } from '@shared/api/client'
 import { Estado } from '@shared/ui/Estado'
 import type { TenantPublico } from '@shared/api/types'
-import { TenantContexto, colorPrimario } from '@public/TenantContexto'
+import { Cabecera } from '@public/Cabecera'
+import { Pie } from '@public/Pie'
+import { TenantContexto, variablesDeMarca } from '@public/TenantContexto'
 
 type Carga =
   | { tipo: 'cargando' }
   | { tipo: 'ok'; tenant: TenantPublico }
   | { tipo: 'sin-automotora' }
+  | { tipo: 'mantenimiento'; automotora: string | null }
   | { tipo: 'error'; mensaje: string }
 
 /**
@@ -21,6 +24,8 @@ type Carga =
 export function SitioPublicoLayout() {
   const { slug = null } = useParams<{ slug: string }>()
   const [carga, setCarga] = useState<Carga>({ tipo: 'cargando' })
+
+  useArrancarArriba()
 
   useEffect(() => {
     const controlador = new AbortController()
@@ -37,6 +42,13 @@ export function SitioPublicoLayout() {
           return
         }
 
+        // Suspendida por falta de pago: mantenimiento, nunca un error. La dirección es de
+        // la automotora y lo que ve su cliente también es su reputación.
+        if (problema instanceof ApiError && problema.problem?.type === 'sitio-en-mantenimiento') {
+          setCarga({ tipo: 'mantenimiento', automotora: problema.problem.automotora ?? null })
+          return
+        }
+
         setCarga({
           tipo: 'error',
           mensaje: problema instanceof Error ? problema.message : 'No se pudo contactar la API.',
@@ -45,6 +57,23 @@ export function SitioPublicoLayout() {
 
     return () => controlador.abort()
   }, [slug])
+
+  const tenant = carga.tipo === 'ok' ? carga.tenant : null
+
+  // De layout y no un efecto común: con un efecto, el primer cuadro saldría con el color
+  // del producto y después saltaría al de la automotora.
+  useLayoutEffect(() => {
+    if (!tenant) return
+
+    const raiz = document.documentElement
+    const variables = Object.entries(variablesDeMarca(tenant))
+
+    for (const [nombre, valor] of variables) raiz.style.setProperty(nombre, valor)
+
+    return () => {
+      for (const [nombre] of variables) raiz.style.removeProperty(nombre)
+    }
+  }, [tenant])
 
   if (carga.tipo === 'cargando') {
     return <Estado titulo="Cargando…" />
@@ -57,8 +86,19 @@ export function SitioPublicoLayout() {
         detalle={
           slug
             ? `No hay ninguna automotora publicada con el slug "${slug}".`
-            : 'Esta dirección no corresponde a ninguna automotora publicada. En desarrollo, entrá por /t/{slug}.'
+            : import.meta.env.DEV
+              ? 'Esta dirección no corresponde a ninguna automotora publicada. En desarrollo, entrá por /t/{slug}.'
+              : 'Esta dirección no corresponde a ninguna automotora publicada.'
         }
+      />
+    )
+  }
+
+  if (carga.tipo === 'mantenimiento') {
+    return (
+      <Estado
+        titulo={carga.automotora ?? 'Sitio en mantenimiento'}
+        detalle="Estamos haciendo mejoras en el sitio. Volvé a visitarnos en unos días."
       />
     )
   }
@@ -67,54 +107,41 @@ export function SitioPublicoLayout() {
     return <Estado titulo="Algo salió mal" detalle={carga.mensaje} />
   }
 
-  const { tenant } = carga
-  const primario = colorPrimario(tenant)
   const base = slug ? `/t/${slug}` : ''
 
   return (
-    <TenantContexto.Provider value={{ tenant, slug }}>
-      <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
-        <header className="border-b border-slate-200 bg-white" style={{ borderTopColor: primario, borderTopWidth: 4 }}>
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
-            <Link to={base || '/'} className="flex items-center gap-3">
-              {tenant.logoUrl ? (
-                <img src={tenant.logoUrl} alt={tenant.nombre} className="h-10 w-auto" />
-              ) : (
-                <span
-                  className="grid h-10 w-10 place-items-center rounded-lg font-bold text-white"
-                  style={{ backgroundColor: primario }}
-                >
-                  {tenant.nombre.charAt(0)}
-                </span>
-              )}
-              <span className="text-lg font-bold">{tenant.nombre}</span>
-            </Link>
+    <TenantContexto.Provider value={{ tenant: carga.tenant, slug }}>
+      <div className="flex min-h-screen flex-col bg-white">
+        <Cabecera tenant={carga.tenant} base={base} />
 
-            <nav className="flex items-center gap-4 text-sm font-medium">
-              <Link to={`${base}/vehiculos`} className="hover:underline">
-                Vehículos
-              </Link>
-              {tenant.telefono && (
-                <a href={`tel:${tenant.telefono}`} className="hidden sm:inline hover:underline">
-                  {tenant.telefono}
-                </a>
-              )}
-            </nav>
-          </div>
-        </header>
-
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+        <main className="flex-1">
           <Outlet />
         </main>
 
-        <footer className="border-t border-slate-200 bg-white">
-          <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-6 text-sm text-slate-500">
-            <p className="font-semibold text-slate-700">{tenant.nombre}</p>
-            {tenant.direccion && <p>{tenant.direccion}</p>}
-            {tenant.telefono && <p>Tel. {tenant.telefono}</p>}
-          </div>
-        </footer>
+        <Pie tenant={carga.tenant} base={base} />
       </div>
     </TenantContexto.Provider>
   )
+}
+
+/**
+ * Cada página nueva arranca arriba. Volver atrás no: ahí el navegador recupera la posición
+ * en la que estaba la persona, que es lo que espera.
+ *
+ * Es un efecto de layout para que corra antes de que el navegador saque la foto de la
+ * página nueva en la transición.
+ */
+function useArrancarArriba() {
+  const { pathname } = useLocation()
+  const tipo = useNavigationType()
+  const rutaAnterior = useRef<string | null>(null)
+
+  // Cambiar un filtro reemplaza la URL sin cambiar de página: eso no es una página nueva,
+  // y sin esta comparación cada filtro mandaría arriba de todo.
+  useLayoutEffect(() => {
+    if (rutaAnterior.current === pathname) return
+    rutaAnterior.current = pathname
+
+    if (tipo !== 'POP') window.scrollTo(0, 0)
+  }, [pathname, tipo])
 }
