@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
-import { entero, fecha } from '@shared/ui/formato'
-import { precio } from '@shared/ui/formato'
+import { entero, fecha, precio } from '@shared/ui/formato'
+import { Insignia } from '@admin/ui/Pagina'
 import type { Plan, TenantAdmin, VerificacionDeDominio } from '@shared/api/types'
 
 export function AutomotorasPage() {
@@ -13,6 +13,7 @@ export function AutomotorasPage() {
   const [creando, setCreando] = useState(false)
   const [verificaciones, setVerificaciones] = useState<Record<number, VerificacionDeDominio>>({})
   const [verificando, setVerificando] = useState<number | null>(null)
+  const [restableciendo, setRestableciendo] = useState<number | null>(null)
   const [planes, setPlanes] = useState<Plan[]>([])
 
   const [formulario, setFormulario] = useState({
@@ -127,7 +128,10 @@ export function AutomotorasPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Automotoras</h1>
+      <header>
+        <h1 className="panel-titulo">Automotoras</h1>
+        <p className="mt-1 max-w-2xl panel-ayuda">Los clientes del SaaS: su dirección, su dominio y el acceso de sus usuarios.</p>
+      </header>
 
       {!tenants ? (
         <Esqueleto className="h-48" />
@@ -136,16 +140,12 @@ export function AutomotorasPage() {
           {tenants.map((tenant) => (
             <li
               key={tenant.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4"
+              className="flex flex-wrap items-center justify-between gap-3 panel-seccion p-4 sm:p-4"
             >
               <div className="min-w-0">
-                <p className="font-semibold">
+                <p className="flex flex-wrap items-center gap-2 font-semibold">
                   {tenant.nombre}
-                  {!tenant.activo && (
-                    <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-600">
-                      apagada
-                    </span>
-                  )}
+                  {!tenant.activo && <Insignia tono="gris">Apagada</Insignia>}
                 </p>
                 <p className="text-sm text-slate-500">
                   /t/{tenant.slug}
@@ -163,26 +163,38 @@ export function AutomotorasPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-4 text-sm">
-                <span className="text-slate-500">
+              {/* En el celular los conteos van en su renglón: al lado de los botones se parten. */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                <span className="w-full whitespace-nowrap text-slate-500 sm:w-auto">
                   {entero(tenant.vehiculos)} vehículos · {entero(tenant.usuarios)} usuarios
                 </span>
                 <button
                   type="button"
+                  onClick={() => setRestableciendo(restableciendo === tenant.id ? null : tenant.id)}
+                  className="panel-boton-secundario whitespace-nowrap"
+                >
+                  Restablecer contraseña
+                </button>
+                <button
+                  type="button"
                   onClick={() => void alternar(tenant)}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 hover:border-slate-500"
+                  className={`whitespace-nowrap ${tenant.activo ? 'panel-boton-peligro' : 'panel-boton-secundario'}`}
                 >
                   {tenant.activo ? 'Apagar sitio' : 'Reactivar'}
                 </button>
               </div>
+
+              {restableciendo === tenant.id && (
+                <RestablecerPassword tenant={tenant} alTerminar={() => setRestableciendo(null)} />
+              )}
             </li>
           ))}
         </ul>
       )}
 
-      <form onSubmit={crear} className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5">
+      <form onSubmit={crear} className="flex flex-col gap-4 panel-seccion">
         <div>
-          <h2 className="font-semibold">Nueva automotora</h2>
+          <h2 className="panel-seccion-titulo">Nueva automotora</h2>
           <p className="mt-1 text-sm text-slate-500">
             Se crea junto con su dueño: una automotora sin nadie que pueda entrar no sirve
             para nada.
@@ -302,7 +314,7 @@ export function AutomotorasPage() {
           <button
             type="submit"
             disabled={creando}
-            className="rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="panel-boton"
           >
             {creando ? 'Creando…' : 'Crear automotora'}
           </button>
@@ -353,7 +365,7 @@ function EstadoDelDominio({
         type="button"
         onClick={onVerificar}
         disabled={verificando}
-        className="rounded-lg border border-slate-300 px-2.5 py-1 hover:border-slate-500 disabled:opacity-50"
+        className="panel-boton-chico"
       >
         {verificando ? 'Verificando…' : 'Verificar'}
       </button>
@@ -370,7 +382,81 @@ function EstadoDelDominio({
   )
 }
 
-const entradaClase = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
+const entradaClase = 'panel-entrada'
+
+/**
+ * Le pone una contraseña provisoria a un usuario de la automotora. Al entrar con ella,
+ * lo único que puede hacer es cambiarla; la provisoria se le pasa por WhatsApp o teléfono.
+ */
+function RestablecerPassword({ tenant, alTerminar }: { tenant: TenantAdmin; alTerminar: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [estado, setEstado] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
+  const [enviando, setEnviando] = useState(false)
+
+  async function enviar(evento: React.FormEvent) {
+    evento.preventDefault()
+    setEnviando(true)
+    setEstado(null)
+
+    try {
+      await api.admin.restablecerPassword(tenant.id, email, password)
+      setEstado({
+        tipo: 'ok',
+        texto: `Listo. ${email} entra con la provisoria y la cambia en el primer ingreso. Sus sesiones abiertas se cerraron.`,
+      })
+      setPassword('')
+    } catch (problema) {
+      const porCampo = problema instanceof ApiError ? Object.values(problema.erroresPorCampo).flat() : []
+      setEstado({
+        tipo: 'error',
+        texto:
+          porCampo.length > 0
+            ? porCampo.join(' ')
+            : problema instanceof ApiError
+              ? problema.message
+              : 'No se pudo restablecer la contraseña.',
+      })
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <form onSubmit={enviar} className="flex w-full flex-col gap-3 rounded-lg bg-slate-50 p-3 sm:flex-row sm:items-end">
+      <Campo etiqueta="Email del usuario">
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={entradaClase} />
+      </Campo>
+      <Campo etiqueta="Contraseña provisoria">
+        <input
+          type="text"
+          required
+          autoComplete="off"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className={entradaClase}
+        />
+      </Campo>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={enviando}
+          className="panel-boton px-3 py-2"
+        >
+          {enviando ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" onClick={alTerminar} className="rounded-lg px-3 py-2 text-sm text-slate-600">
+          Cerrar
+        </button>
+      </div>
+      {estado && (
+        <p className={`text-sm sm:basis-full ${estado.tipo === 'ok' ? 'text-emerald-700' : 'text-rose-600'}`}>
+          {estado.texto}
+        </p>
+      )}
+    </form>
+  )
+}
 
 function Campo({
   etiqueta,
@@ -383,10 +469,10 @@ function Campo({
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{etiqueta}</span>
+      <span className="panel-etiqueta">{etiqueta}</span>
       {children}
       {errores?.map((error) => (
-        <span key={error} className="mt-1 block text-xs text-rose-600">
+        <span key={error} className="panel-error">
           {error}
         </span>
       ))}

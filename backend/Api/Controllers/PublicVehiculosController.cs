@@ -7,6 +7,7 @@ using AutomotoraSaaS.Core.Vehiculos;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutomotoraSaaS.Api.Controllers;
@@ -133,6 +134,77 @@ public sealed class PublicVehiculosController : ControllerBase
 
     private static IReadOnlyList<string> Distintos(IEnumerable<string> valores)
         => valores.Distinct(StringComparer.Ordinal).OrderBy(v => v, StringComparer.Ordinal).ToList();
+
+    /// <summary>
+    /// Registra lo que alguien escribió en el buscador de la portada y no encontró.
+    /// </summary>
+    /// <remarks>
+    /// El buscador sugiere solo lo publicado, así que lo que no está ni siquiera llega al
+    /// listado: sin este endpoint, quien busca "Hilux" en una automotora sin Hilux no deja
+    /// rastro, y es exactamente la demanda que el producto promete medir.
+    /// <para>
+    /// El texto se interpreta contra el catálogo global y se guarda como una búsqueda
+    /// más, con la marca y el modelo resueltos, así cae en los mismos grupos del reporte y
+    /// de las sugerencias que una búsqueda hecha con filtros. Mientras el visitante
+    /// escribe (<c>confirmada = false</c>) solo se guarda si se reconoció algo del
+    /// catálogo; un texto que no se parece a nada se guarda únicamente si lo confirmó con
+    /// el botón, para no llenar el reporte de palabras a medio escribir.
+    /// </para>
+    /// </remarks>
+    [HttpPost("busquedas")]
+    [EnableRateLimiting(LimitesDeEventos.Politica)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RegistrarBusquedaDeTexto(
+        BusquedaDeTextoRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (_tenantContext.TenantId is null)
+        {
+            return NotFound();
+        }
+
+        // El catálogo es global: no lleva tenant y no lo recorta ningún filtro.
+        var marcas = await _db.Marcas
+            .Where(m => m.Activo)
+            .Select(m => new
+            {
+                m.Id,
+                m.Nombre,
+                Modelos = m.Modelos.Where(o => o.Activo).Select(o => new { o.Id, o.Nombre }).ToList(),
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var catalogo = marcas
+            .SelectMany(m => m.Modelos
+                .Select(o => new EntradaDelCatalogo(m.Id, m.Nombre, o.Id, o.Nombre))
+                .DefaultIfEmpty(new EntradaDelCatalogo(m.Id, m.Nombre, null, null)))
+            .ToList();
+
+        var interpretada = InterpreteDeBusqueda.Interpretar(request.Texto, catalogo);
+
+        if (interpretada.MarcaId is null && !request.Confirmada)
+        {
+            return Accepted();
+        }
+
+        var filtros = new FiltrosPublicosDeVehiculos
+        {
+            MarcaId = interpretada.MarcaId,
+            ModeloId = interpretada.ModeloId,
+            SessionId = request.SessionId,
+        };
+
+        var resultados = await Aplicar(Publicables(), filtros).CountAsync(cancellationToken).ConfigureAwait(false);
+
+        await RegistrarBusquedaAsync(filtros, resultados, cancellationToken, request.Texto.Trim())
+            .ConfigureAwait(false);
+
+        return Accepted();
+    }
 
     [HttpGet("vehiculos")]
     [ProducesResponseType(typeof(PaginaDe<VehiculoPublicoResumenDto>), StatusCodes.Status200OK)]
@@ -289,9 +361,10 @@ public sealed class PublicVehiculosController : ControllerBase
     private async Task RegistrarBusquedaAsync(
         FiltrosPublicosDeVehiculos filtros,
         int resultados,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? texto = null)
     {
-        if (!filtros.HayFiltros)
+        if (!filtros.HayFiltros && texto is null)
         {
             return;
         }
@@ -314,6 +387,7 @@ public sealed class PublicVehiculosController : ControllerBase
                 filtros.Combustible,
                 filtros.Transmision,
                 filtros.Carroceria,
+                Texto = texto,
             },
             OpcionesDeSerializacion);
 

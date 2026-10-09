@@ -65,8 +65,14 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
             ["Jwt__RefreshTokenDays"] = "30",
             ["Cors__AllowedOrigins__0"] = "http://localhost:5173",
             ["Jobs__Secret"] = SecretoDeJobs,
-            ["Analytics__IpHashSalt"] = "sal-de-tests-estable",
             ["Deploy__IpsPublicas__0"] = IpDeLaAplicacion,
+
+            // Todos los tests llegan desde la misma "IP" del TestServer; con el tope real
+            // de logins por IP, una clase con muchos tests se frenaría a sí misma.
+            ["Seguridad__LoginsPorMinutoPorIp"] = "100000",
+
+            // El index.html del frontend, que en producción vive en wwwroot.
+            ["Sitio__Index"] = IndexDePrueba(),
 
             // El seed de arranque no corre fuera de Development, pero si alguien hereda
             // una variable de su shell, que no se cuele en la base de los tests.
@@ -77,6 +83,16 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         {
             Environment.SetEnvironmentVariable(clave, valor);
         }
+    }
+
+    /// <summary>Un index.html mínimo, con lo que el servidor reemplaza.</summary>
+    private static string IndexDePrueba()
+    {
+        var ruta = Path.Combine(Path.GetTempPath(), "automotora-saas-tests-index.html");
+        File.WriteAllText(
+            ruta,
+            "<!doctype html><html><head><link rel=\"icon\" href=\"/favicon.svg\" /><title>Automotora SaaS</title></head><body><div id=\"root\"></div></body></html>");
+        return ruta;
     }
 
     public FabricaDeApi()
@@ -424,6 +440,19 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
             PrecioCosto = precio - 2_000m,
             FechaPublicacion = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
         };
+
+    /// <summary>
+    /// Agrega un Seller a Norte con la contraseña de siempre. Para los tests que necesitan
+    /// una cuenta que nadie más toque.
+    /// </summary>
+    public void AgregarVendedorDeNorte(string email)
+    {
+        using var scope = Services.CreateScope();
+        var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+
+        ConLaBase(db => db.Users.Add(
+            NuevoUsuario(email, "Vendedor extra", RolUsuario.Seller, TenantNorte, hasher.Hash(Password))));
+    }
 
     private static User NuevoUsuario(string email, string nombre, RolUsuario rol, int? tenantId, string hash)
         => new()

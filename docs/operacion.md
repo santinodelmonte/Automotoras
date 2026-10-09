@@ -143,3 +143,4 @@ app pool de IIS recicla cuando quiere.
 | `POST /api/jobs/cotizaciones` | Diaria |
 | `POST /api/jobs/precios-de-mercado` | Diaria |
 | `POST /api/jobs/avisos-de-vencimiento` | Diaria, a la mañana. Necesita `Correo:*` configurado; la respuesta dice cuántos avisos salieron y cuántos fallaron |
+| `POST /api/jobs/limpieza-de-analitica` | Semanal. Borra el detalle de visitas y búsquedas más viejo que `Analitica:MesesDeRetencion` (24 meses; nunca menos de 13) |

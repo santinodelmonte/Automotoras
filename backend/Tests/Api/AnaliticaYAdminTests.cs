@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using AutomotoraSaaS.Core.Admin;
 using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Dashboard;
+using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Planes;
 using AutomotoraSaaS.Core.Publico;
@@ -49,11 +50,17 @@ public sealed class AnaliticaYAdminTests : IClassFixture<FabricaDeApi>
         Assert.Equal(_api.VehiculoDeNorte, evento.VehiculoId);
     }
 
-    /// <summary>La IP nunca se guarda en claro.</summary>
+    /// <summary>
+    /// De la visita no se guarda ni la IP, ni el navegador, ni la página de origen: la
+    /// tabla no tiene dónde. Este test lee la fila cruda para que nadie vuelva a agregarlos
+    /// sin enterarse.
+    /// </summary>
     [Fact]
-    public async Task La_ip_del_evento_se_guarda_hasheada()
+    public async Task El_evento_no_guarda_datos_de_quien_visita()
     {
         using var cliente = _api.CreateClient();
+        cliente.DefaultRequestHeaders.Add("User-Agent", "Navegador-De-Prueba/1.0");
+        cliente.DefaultRequestHeaders.Add("Referer", "https://ejemplo.uy/?email=alguien@ejemplo.uy");
 
         await cliente.PostAsJsonAsync(
             "/t/norte/api/public/events",
@@ -68,13 +75,14 @@ public sealed class AnaliticaYAdminTests : IClassFixture<FabricaDeApi>
 
         Assert.NotNull(evento);
 
-        if (evento.IpHash is not null)
-        {
-            // SHA-256 en hexadecimal, y nada que se parezca a una dirección.
-            Assert.Equal(64, evento.IpHash.Length);
-            Assert.DoesNotContain('.', evento.IpHash);
-            Assert.DoesNotContain(':', evento.IpHash);
-        }
+        var columnas = db.Model.FindEntityType(typeof(Evento))!
+            .GetProperties()
+            .Select(p => p.GetColumnName())
+            .ToList();
+
+        Assert.Equal(
+            ["created_at", "id", "metadata", "session_id", "tenant_id", "tipo", "vehiculo_id"],
+            columnas.Order(StringComparer.Ordinal));
     }
 
     /// <summary>
@@ -183,6 +191,31 @@ public sealed class AnaliticaYAdminTests : IClassFixture<FabricaDeApi>
         Assert.Contains(tenants, t => t.Slug == "sur");
         Assert.Contains(tenants, t => t.Slug == "apagada");
         Assert.True(tenants.First(t => t.Slug == "norte").Usuarios > 0);
+    }
+
+    /// <summary>
+    /// El SuperAdmin no tiene automotora, pero el catálogo lo administra él: sin las
+    /// carrocerías, el alta de modelos no puede ofrecer ninguna.
+    /// </summary>
+    [Fact]
+    public async Task El_superadmin_lee_las_carrocerias_para_el_alta_de_modelos()
+    {
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailSuperAdmin);
+
+        var carrocerias = await cliente.GetFromJsonAsync<List<string>>("/api/admin/catalogo/carrocerias");
+
+        Assert.NotNull(carrocerias);
+        Assert.Contains(nameof(Carroceria.Sedan), carrocerias);
+    }
+
+    [Fact]
+    public async Task El_owner_no_lee_las_carrocerias_del_catalogo_de_superadmin()
+    {
+        using var cliente = await _api.ClienteDeAsync(FabricaDeApi.EmailOwnerNorte);
+
+        var respuesta = await cliente.GetAsync("/api/admin/catalogo/carrocerias");
+
+        Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
     }
 
     /// <summary>

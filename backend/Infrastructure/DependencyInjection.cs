@@ -4,7 +4,6 @@ using AutomotoraSaaS.Infrastructure.Auth;
 using AutomotoraSaaS.Infrastructure.MultiTenancy;
 using AutomotoraSaaS.Core.Storage;
 using AutomotoraSaaS.Core.Tenants;
-using AutomotoraSaaS.Infrastructure.Analitica;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using AutomotoraSaaS.Infrastructure.Planes;
 using AutomotoraSaaS.Infrastructure.Correo;
@@ -77,9 +76,9 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasherPbkdf2>();
         services.AddSingleton<GeneradorDeTokens>();
         services.AddScoped<IServicioDeAutenticacion, ServicioDeAutenticacion>();
+        services.AddSingleton<FrenoDeLogin>();
 
         // Hashea las IPs de los eventos. Sin estado y con la sal ya materializada.
-        services.AddSingleton<HasheadorDeIp>();
 
         // Storage de imágenes. El proveedor se elige por configuración y no por #if de
         // compilación: el mismo binario tiene que poder correr local y en producción.

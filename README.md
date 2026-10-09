@@ -113,6 +113,26 @@ Cada automotora tiene un Owner y un Seller, con el slug en el mail:
 | `vendedor@norte.uy` | Seller | Vehículos y consultas de Automotora Norte |
 | `owner@sur.uy`, `owner@costa.uy`, `owner@centenario.uy`, `owner@litoral.uy`, `owner@prado.uy`, `owner@estenia.uy` | Owner | Lo mismo, en las otras seis |
 | `super@automotoras.uy` | SuperAdmin | Cross-tenant, por `/api/admin/*` |
+| `nuevo@norte.uy` | Seller | Entra con contraseña provisoria: lo único que puede hacer es cambiarla |
+
+Todos usan la contraseña de `Seed:Password`.
+
+**Planes y cobranza.** Para que se vean todos los estados del ciclo de cobro, cuatro
+automotoras arrancan en un escenario distinto (las fechas son relativas al día en que
+corrió el seed, así que con el tiempo avanzan solas):
+
+| Automotora | Plan | Estado | Qué se puede probar |
+| --- | --- | --- | --- |
+| Norte | Full | Al día, con tres meses cobrados | Todo el producto; historial de cobros |
+| Sur | Demanda | Vence en 4 días | Aviso de vencimiento; sin benchmark |
+| Costa | Vidriera | Vencida hace 3 días, en gracia | Sitio arriba con aviso; reportes bloqueados por plan; tope de usuarios lleno |
+| Litoral | Demanda | Vencida hace 20 días | Sitio público en mantenimiento; panel y exportación andando |
+
+Centenario, Prado y Estenia quedan en Full al día.
+
+**Carga masiva.** En [`docs/ejemplos`](docs/ejemplos) hay un CSV que se importa sin errores
+contra el catálogo del seed (`stock-de-ejemplo.csv`) y otro con un error distinto en cada
+fila (`stock-con-errores.csv`), para ver la validación.
 
 **Son siete y no dos por el benchmark.** La comparación contra el mercado no publica nada
 por debajo de cinco automotoras además de la que pregunta, así que con dos o tres la
@@ -242,6 +262,12 @@ nada de ningún tenant.
 - **Contraseñas:** PBKDF2-HMAC-SHA256, 210.000 iteraciones, sal por contraseña. El hash
   guardado declara algoritmo, costo y sal, así que subir el costo más adelante no invalida
   las contraseñas existentes.
+- **Intentos de login:** dos frenos. Por cuenta, cinco fallos en quince minutos la dejan
+  frenada quince minutos, aunque después llegue la contraseña correcta
+  ([`FrenoDeLogin`](backend/Infrastructure/Auth/FrenoDeLogin.cs)); se mira antes de
+  hashear, así que tampoco le cuesta CPU al servidor. Por IP, veinte intentos por minuto
+  (`Seguridad:LoginsPorMinutoPorIp`). Los dos responden 429 con `Retry-After`. Viven en
+  memoria: un reciclado del app pool los pone en cero, y es un precio aceptable.
 
 ### Roles
 
@@ -286,6 +312,8 @@ nada de ningún tenant.
 | `GET /api/public/vehiculos/{id}` | Ficha, con el mensaje de WhatsApp ya armado |
 | `POST /api/public/events` | Registro de eventos, con límite de tasa por IP |
 | `GET /api/public/sitemap.xml` | Sitemap del tenant |
+| `POST /api/public/busquedas` | Lo escrito en el buscador de la portada, interpretado contra el catálogo |
+| `GET /robots.txt` | Apunta al sitemap de la automotora; en el dominio del SaaS no deja indexar nada |
 
 **SuperAdmin y jobs**
 
@@ -293,6 +321,7 @@ nada de ningún tenant.
 | --- | --- | --- |
 | `GET/POST/PUT /api/admin/tenants` | SuperAdmin | ABM de automotoras, con su Owner |
 | `POST /api/admin/tenants/{id}/verificar-dominio` | SuperAdmin | Comprueba que el dominio propio apunte acá y lo habilita |
+| `POST /api/admin/tenants/{id}/restablecer-password` | SuperAdmin | Contraseña provisoria para un usuario de la automotora: el camino del dueño que se olvidó la suya |
 | `GET/POST/PUT /api/admin/planes` | SuperAdmin | Catálogo de planes: precio, topes y qué incluye |
 | `GET /api/admin/cobranza` | SuperAdmin | Todas las automotoras con plan, vencimiento y uso, las más urgentes primero |
 | `GET/POST /api/admin/tenants/{id}/suscripcion` | SuperAdmin | Ver el historial, asignar o cambiar de plan |
@@ -463,13 +492,15 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | `Deploy:IpsPublicas` | `Deploy__IpsPublicas__0` | IP públicas de la aplicación. Es contra lo que se verifica un dominio propio; sin ellas, ningún dominio se puede verificar. |
 | `Cobranza:DiasDeAviso` / `Cobranza:DiasDeGracia` | `Cobranza__DiasDeAviso` / `Cobranza__DiasDeGracia` | Días de aviso antes del vencimiento (7) y de gracia después (10), con el sitio todavía publicado. |
 | `Correo:Host` / `Puerto` / `UsarSsl` / `Usuario` / `Password` / `Remitente` | `Correo__Host`, etc. | SMTP para los avisos de vencimiento. Sin `Host` y `Remitente` no sale ningún aviso. La contraseña nunca se versiona. |
-| `Analytics:IpHashSalt` | `Analytics__IpHashSalt` | Sal para hashear las IPs de los eventos. Si queda vacía se usa `Jwt:Secret`. |
+| `Analitica:MesesDeRetencion` | `Analitica__MesesDeRetencion` | Cuántos meses se guarda el detalle de visitas y búsquedas (24). Lo borra `POST /api/jobs/limpieza-de-analitica`. |
 | `Seed:Password` | `Seed__Password` | Contraseña de los usuarios de desarrollo. Solo se usa en Development; sin valor, el seed no corre. |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0` | Orígenes del frontend habilitados. En desarrollo, `http://localhost:5173`. |
 
 ### Frontend
 
-Copiá [`frontend/.env.example`](frontend/.env.example) a `frontend/.env`:
+Copiá [`frontend/.env.example`](frontend/.env.example) a `frontend/.env.development`.
+Tiene que ser `.env.development` y no `.env`: Vite lee `.env` también al compilar para
+producción, y el bundle terminaba apuntando a `localhost:5080`.
 
 | Variable | Para qué |
 | --- | --- |
@@ -509,3 +540,27 @@ respetar tres reglas desde el principio:
    cron externo.
 3. **Nada hardcodeado.** Toda configuración sale de variables de entorno o de `appsettings`
    sobrescribible.
+
+## Publicar
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools/publicar.ps1
+```
+
+Deja en `.publish/` la API compilada en Release con el frontend adentro de `wwwroot`, más
+el `web.config` de IIS. Ese contenido es lo que se sube al sitio del hosting. El script
+compila el frontend con `VITE_API_BASE_URL` vacía —la API está en el mismo origen— y
+falla si el bundle quedó apuntando a `localhost`.
+
+**Un solo sitio sirve las dos cosas.** Lo que no es `/api` ni un archivo devuelve el
+`index.html` del frontend, pero con el `<title>`, la descripción, la imagen de Open Graph,
+el color y el ícono de la automotora —y en la ficha, los del vehículo— ya puestos
+([`SitioDelFrontend`](backend/Api/Sitio/SitioDelFrontend.cs)). Es lo que hace que un auto
+compartido por WhatsApp aparezca con su foto y su precio: WhatsApp no ejecuta JavaScript.
+Un vehículo vendido o una automotora que no existe responden 404 con `noindex`; una
+suspendida, 503.
+
+Antes de subir una versión con migraciones nuevas, el SQL se genera con
+`migrations script --idempotent` (ver [Migraciones](#migraciones)) y se aplica desde el
+panel del hosting. La migración `CatalogoDeProduccion` carga el catálogo base de marcas y
+modelos; es idempotente y no toca lo que ya existe.

@@ -13,10 +13,6 @@ public sealed class EventoConfiguration : IEntityTypeConfiguration<Evento>
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.SessionId).HasMaxLength(64);
-        // SHA-256 en hexadecimal. La IP en claro no se guarda nunca.
-        builder.Property(e => e.IpHash).HasMaxLength(64);
-        builder.Property(e => e.UserAgent).HasMaxLength(400);
-        builder.Property(e => e.Referer).HasMaxLength(500);
         builder.Property(e => e.Metadata).HasColumnType("json");
 
         // Índice obligatorio del brief. Es el que sostiene todos los reportes: esta tabla

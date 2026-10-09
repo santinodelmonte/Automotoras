@@ -5,6 +5,7 @@ using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Publico;
 using AutomotoraSaaS.Core.Reportes;
 using AutomotoraSaaS.Core.Vehiculos;
 using AutomotoraSaaS.Infrastructure.Persistence;
@@ -276,12 +277,24 @@ public sealed class ReportesController : ControllerBase
             .ToList();
 
         var grupos = parseadas
-            .GroupBy(b => new { b.Filtros!.MarcaId, b.Filtros.ModeloId, b.Filtros.Carroceria })
+            .GroupBy(b => new
+            {
+                b.Filtros!.MarcaId,
+                b.Filtros.ModeloId,
+                b.Filtros.Carroceria,
+
+                // El texto solo separa grupos cuando no se reconoció nada del catálogo: "hilux"
+                // y "toyota hilux" son la misma demanda, "tesla" y "lada" no.
+                Texto = b.Filtros.MarcaId is null && b.Filtros.ModeloId is null && b.Filtros.Carroceria is null
+                    ? TextoLibre(b.Filtros.Texto)
+                    : null,
+            })
             .Select(g => new
             {
                 g.Key.MarcaId,
                 g.Key.ModeloId,
                 g.Key.Carroceria,
+                g.Key.Texto,
                 Veces = g.Count(),
 
                 // Las búsquedas sin sesión no cuentan como visita distinta, en vez de
@@ -313,6 +326,7 @@ public sealed class ReportesController : ControllerBase
                 g.MarcaId,
                 g.ModeloId,
                 g.Carroceria,
+                g.Texto,
                 g.Veces,
                 g.Sesiones,
                 g.UltimaVez,
@@ -367,7 +381,8 @@ public sealed class ReportesController : ControllerBase
                 g.PresupuestoTipico,
                 g.Veces,
                 g.Sesiones,
-                g.UltimaVez);
+                g.UltimaVez,
+                g.Texto);
             })
             .ToList();
     }
@@ -389,6 +404,9 @@ public sealed class ReportesController : ControllerBase
             ? ordenados[medio]
             : Math.Round((ordenados[medio - 1] + ordenados[medio]) / 2m, 2);
     }
+
+    private static string? TextoLibre(string? texto)
+        => InterpreteDeBusqueda.Normalizar(texto) is { Length: > 0 } normalizado ? normalizado : null;
 
     private static FiltrosDeBusquedaGuardados? Parsear(string json)
     {

@@ -334,6 +334,53 @@ public sealed class JobsController : ControllerBase
         return Ok(new ResultadoDeAvisosDto(enviados, yaAvisados, fallidos, correo.Configurado));
     }
 
+    /// <summary>
+    /// Borra el detalle de visitas y búsquedas más viejo que el plazo de retención.
+    /// </summary>
+    /// <remarks>
+    /// La ley pide no guardar datos más tiempo del que hace falta para su finalidad, y
+    /// ningún reporte mira más de un año (<see cref="Core.Reportes.VentanaDeReporte"/>).
+    /// Por eso el plazo no puede bajar de trece meses: con menos, el reporte del último año
+    /// mostraría números cortados. Por defecto son veinticuatro.
+    /// <para>
+    /// Se borra por lotes con <c>ExecuteDelete</c>, sin traer filas a memoria: la tabla de
+    /// eventos es la que más crece, y en shared hosting no hay memoria para cargarla.
+    /// </para>
+    /// </remarks>
+    [HttpPost("limpieza-de-analitica")]
+    [ProducesResponseType(typeof(ResultadoDeLimpiezaDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultadoDeLimpiezaDto>> LimpiezaDeAnalitica(
+        [FromServices] TimeProvider reloj,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(reloj);
+
+        if (!SecretoCorrecto())
+        {
+            return Unauthorized();
+        }
+
+        var meses = Math.Max(RetencionDeAnalitica.MesesMinimos, _configuracion.GetValue(
+            "Analitica:MesesDeRetencion", RetencionDeAnalitica.MesesPorDefecto));
+
+        var limite = reloj.GetUtcNow().UtcDateTime.AddMonths(-meses);
+
+        // Sin tenant a propósito: es un job de mantenimiento sobre todas las automotoras.
+        var eventos = await _db.Eventos
+            .IgnoreQueryFilters()
+            .Where(e => e.CreatedAt < limite)
+            .ExecuteDeleteAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var busquedas = await _db.Busquedas
+            .IgnoreQueryFilters()
+            .Where(b => b.CreatedAt < limite)
+            .ExecuteDeleteAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return Ok(new ResultadoDeLimpiezaDto(eventos, busquedas, limite));
+    }
+
     private bool SecretoCorrecto()
     {
         var esperado = _configuracion["Jobs:Secret"];

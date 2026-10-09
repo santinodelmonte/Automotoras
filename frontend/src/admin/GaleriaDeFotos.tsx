@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Star, Trash2 } from 'lucide-react'
 import { api, ApiError } from '@shared/api/client'
 import { achicar, nombreDeSubida } from '@admin/imagenes'
 import type { VehiculoFoto } from '@shared/api/types'
@@ -97,16 +98,16 @@ export function GaleriaDeFotos({ vehiculoId, fotos, onCambio }: Props) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
+    <section className="panel-seccion">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-semibold">Fotos</h2>
+          <h2 className="panel-seccion-titulo">Fotos</h2>
           <p className="text-sm text-slate-500">
             La primera es la portada. Se achican solas antes de subir.
           </p>
         </div>
 
-        <label className="cursor-pointer rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:border-slate-500">
+        <label className="cursor-pointer panel-boton-secundario">
           Agregar fotos
           <input
             ref={entrada}
@@ -152,25 +153,31 @@ export function GaleriaDeFotos({ vehiculoId, fotos, onCambio }: Props) {
                 )}
               </div>
 
-              <div className="flex items-center justify-between gap-1 p-1.5 text-xs">
+              {/*
+               * Íconos y no palabras: en el celular la tarjeta mide unos 130px y "Portada" y
+               * "Borrar" escritos no entraban. El nombre va en el aria-label y en el title.
+               */}
+              <div className="flex items-center justify-between gap-1 p-1.5">
                 <div className="flex gap-1">
                   <button
                     type="button"
                     disabled={indice === 0}
                     onClick={() => mover(indice, -1)}
-                    className="rounded border border-slate-300 px-1.5 py-0.5 disabled:opacity-30"
+                    className="panel-boton-chico size-7 p-0"
                     aria-label="Mover antes"
+                    title="Mover antes"
                   >
-                    ←
+                    <ChevronLeft aria-hidden className="size-4" />
                   </button>
                   <button
                     type="button"
                     disabled={indice === fotos.length - 1}
                     onClick={() => mover(indice, 1)}
-                    className="rounded border border-slate-300 px-1.5 py-0.5 disabled:opacity-30"
+                    className="panel-boton-chico size-7 p-0"
                     aria-label="Mover después"
+                    title="Mover después"
                   >
-                    →
+                    <ChevronRight aria-hidden className="size-4" />
                   </button>
                 </div>
 
@@ -179,17 +186,21 @@ export function GaleriaDeFotos({ vehiculoId, fotos, onCambio }: Props) {
                     <button
                       type="button"
                       onClick={() => void accion(() => api.vehiculos.fotos.portada(vehiculoId, foto.id))}
-                      className="rounded border border-slate-300 px-1.5 py-0.5"
+                      className="panel-boton-chico size-7 p-0"
+                      aria-label="Usar de portada"
+                      title="Usar de portada"
                     >
-                      Portada
+                      <Star aria-hidden className="size-4" />
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => void borrar(foto.id)}
-                    className="rounded border border-rose-300 px-1.5 py-0.5 text-rose-600"
+                    className="panel-boton-chico size-7 border-rose-200 p-0 text-rose-600 hover:border-rose-300 hover:bg-rose-50"
+                    aria-label="Borrar foto"
+                    title="Borrar foto"
                   >
-                    Borrar
+                    <Trash2 aria-hidden className="size-4" />
                   </button>
                 </div>
               </div>

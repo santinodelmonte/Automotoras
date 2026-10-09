@@ -3,6 +3,7 @@ import { api, ApiError } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { fecha, precio } from '@shared/ui/formato'
 import { ImportadorDeStock } from '@admin/ImportadorDeStock'
+import { EntradaNumerica } from '@admin/ui/EntradaNumerica'
 import type { EstadoDeCobro, FilaDeCobranza, Plan, SuscripcionDeTenant, Uso } from '@shared/api/types'
 
 /**
@@ -12,6 +13,11 @@ import type { EstadoDeCobro, FilaDeCobranza, Plan, SuscripcionDeTenant, Uso } fr
  * las filas ordenadas con los suspendidos arriba. El cobro es manual y vive afuera; acá se
  * registra lo cobrado y con eso se mueve el vencimiento.
  */
+/** "hasta 40 vehículos" o "vehículos sin límite". */
+function textoDelTope(maximo: number | null, que: string): string {
+  return maximo === null ? `${que} sin límite` : `hasta ${maximo} ${que}`
+}
+
 export function CobranzaPage() {
   const [filas, setFilas] = useState<FilaDeCobranza[] | null>(null)
   const [planes, setPlanes] = useState<Plan[]>([])
@@ -43,7 +49,10 @@ export function CobranzaPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Cobranza</h1>
+      <header>
+        <h1 className="panel-titulo">Cobranza</h1>
+        <p className="mt-1 max-w-2xl panel-ayuda">Lo urgente primero: quién está suspendido, quién en gracia y quién vence esta semana.</p>
+      </header>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Contador titulo="Suspendidas" valor={cuenta('Suspendido')} estado="Suspendido" />
@@ -176,7 +185,12 @@ function DetalleDeCobranza({
             <input type="date" required value={pago.fecha} onChange={(e) => setPago({ ...pago, fecha: e.target.value })} className={entrada} />
           </Campo>
           <Campo etiqueta="Monto">
-            <input type="number" min="0" step="0.01" required value={pago.monto} onChange={(e) => setPago({ ...pago, monto: e.target.value })} className={entrada} />
+            <EntradaNumerica
+              required
+              moneda={vigente?.plan.moneda}
+              valor={pago.monto === '' ? null : Number(pago.monto)}
+              onCambio={(valor) => setPago({ ...pago, monto: valor === null ? '' : String(valor) })}
+            />
           </Campo>
           <Campo etiqueta="Cubre hasta">
             <input type="date" required value={pago.periodoHasta} onChange={(e) => setPago({ ...pago, periodoHasta: e.target.value })} className={entrada} />
@@ -299,14 +313,13 @@ function EditorDePlanes({ planes, alGuardar }: { planes: Plan[]; alGuardar: () =
   const tope = (valor: string) => (valor === '' ? null : Number(valor))
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5 text-sm">
-      <h2 className="font-semibold">Planes</h2>
+    <section className="flex flex-col gap-3 panel-seccion text-sm">
+      <h2 className="panel-seccion-titulo">Planes</h2>
       <ul className="flex flex-col gap-1">
         {planes.map((p) => (
           <li key={p.id} className="flex flex-wrap items-center justify-between gap-2">
             <span>
-              <strong>{p.nombre}</strong> · {precio(p.precioMensual, p.moneda)} · hasta{' '}
-              {p.maxVehiculos ?? '∞'} vehículos y {p.maxUsuarios ?? '∞'} usuarios
+              <strong>{p.nombre}</strong> · {precio(p.precioMensual, p.moneda)} · {textoDelTope(p.maxVehiculos, 'vehículos')} y {textoDelTope(p.maxUsuarios, 'usuarios')}
               {!p.activo && ' · no se vende'}
             </span>
             <button type="button" onClick={() => setEditando(p)} className={botonSecundario}>
@@ -324,7 +337,12 @@ function EditorDePlanes({ planes, alGuardar }: { planes: Plan[]; alGuardar: () =
             <input required value={editando.nombre} onChange={(e) => setEditando({ ...editando, nombre: e.target.value })} className={entrada} />
           </Campo>
           <Campo etiqueta="Precio mensual">
-            <input type="number" min="0" step="0.01" required value={editando.precioMensual} onChange={(e) => setEditando({ ...editando, precioMensual: Number(e.target.value) })} className={entrada} />
+            <EntradaNumerica
+              required
+              moneda={editando.moneda}
+              valor={editando.precioMensual}
+              onCambio={(valor) => setEditando({ ...editando, precioMensual: valor ?? 0 })}
+            />
           </Campo>
           <Campo etiqueta="Horas de soporte por mes">
             <input type="number" min="0" required value={editando.horasSoporteMes} onChange={(e) => setEditando({ ...editando, horasSoporteMes: Number(e.target.value) })} className={entrada} />
@@ -385,7 +403,7 @@ function Contador({ titulo, valor, estado }: { titulo: string; valor: number; es
 function Campo({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block font-medium text-slate-700">{etiqueta}</span>
+      <span className="panel-etiqueta">{etiqueta}</span>
       {children}
     </label>
   )
@@ -416,6 +434,6 @@ function sumarDia(iso: string): string {
   return new Date(Date.UTC(anio, mes - 1, dia + 1)).toISOString().slice(0, 10)
 }
 
-const entrada = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
+const entrada = 'panel-entrada'
 const botonPrincipal = 'rounded-lg bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50'
 const botonSecundario = 'rounded-lg border border-slate-300 px-3 py-1.5 hover:border-slate-500 disabled:opacity-50'

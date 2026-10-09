@@ -38,6 +38,18 @@ public sealed class AdminCatalogoController : ControllerBase
         _db = db;
     }
 
+    /// <summary>
+    /// Las carrocerías que puede tener un modelo nuevo.
+    /// </summary>
+    /// <remarks>
+    /// Las opciones del catálogo del panel son de la política de tenant, y el SuperAdmin no
+    /// tiene automotora: sin esto, el alta de modelos no puede ofrecer ninguna carrocería.
+    /// </remarks>
+    [HttpGet("carrocerias")]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<string>> Carrocerias()
+        => Ok(Enumeraciones.Nombres<Carroceria>());
+
     [HttpGet("marcas")]
     [ProducesResponseType(typeof(IReadOnlyList<MarcaDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<MarcaDto>>> Marcas(CancellationToken cancellationToken)

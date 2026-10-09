@@ -1,10 +1,15 @@
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Planes;
+using AutomotoraSaaS.Core.Vehiculos;
 using AutomotoraSaaS.Core.Reportes;
 using AutomotoraSaaS.Infrastructure.Auth;
 using AutomotoraSaaS.Infrastructure.MultiTenancy;
 using AutomotoraSaaS.Infrastructure.Persistence;
+using AutomotoraSaaS.Infrastructure.Planes;
+using AutomotoraSaaS.Infrastructure.Vehiculos;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AutomotoraSaaS.Tests.Persistence;
 
@@ -154,6 +159,82 @@ public sealed class SeedDeDesarrolloTests : IDisposable
         Assert.True(
             senales.Count >= 3,
             $"El stock sembrado produce {senales.Count} señal(es) distinta(s): {string.Join(", ", senales)}.");
+    }
+
+    /// <summary>
+    /// Cada estado del ciclo de cobro tiene al menos una automotora: si no, la pantalla de
+    /// cobranza, los topes y la página de mantenimiento no se pueden mirar en desarrollo.
+    /// </summary>
+    [Fact]
+    public void Siembra_una_automotora_en_cada_estado_de_cobro()
+    {
+        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+        var opciones = new OpcionesDeCobranza();
+
+        var estados = _db.Suscripciones
+            .IgnoreQueryFilters()
+            .Where(s => s.Fin == null)
+            .Select(s => new { s.Tenant!.Slug, Plan = s.Plan!.Codigo, s.PagaHasta })
+            .AsEnumerable()
+            .ToDictionary(s => s.Slug, s => (s.Plan, Estado: CicloDeCobro.Evaluar(s.PagaHasta, hoy, opciones)));
+
+        Assert.Equal((CodigosDePlan.Full, EstadoDeCobro.Vigente), estados["norte"]);
+        Assert.Equal((CodigosDePlan.Demanda, EstadoDeCobro.PorVencer), estados["sur"]);
+        Assert.Equal((CodigosDePlan.Vidriera, EstadoDeCobro.Gracia), estados["costa"]);
+        Assert.Equal((CodigosDePlan.Demanda, EstadoDeCobro.Suspendido), estados["litoral"]);
+
+        Assert.True(_db.Users.IgnoreQueryFilters()
+            .Single(u => u.Email == SeedDeCobranza.EmailConPasswordProvisoria).DebeCambiarPassword);
+    }
+
+    /// <summary>El seed corre en cada arranque: correrlo de nuevo no puede duplicar cobros ni romper nada.</summary>
+    [Fact]
+    public async Task Correr_el_seed_de_nuevo_no_cambia_la_cobranza()
+    {
+        var pagos = _db.Pagos.IgnoreQueryFilters().Count();
+        var suscripciones = _db.Suscripciones.IgnoreQueryFilters().Count();
+
+        await SeedDeDesarrollo.EjecutarAsync(_db, new PasswordHasherPbkdf2(), TimeProvider.System, "una-contrasena-de-prueba");
+
+        Assert.Equal(pagos, _db.Pagos.IgnoreQueryFilters().Count());
+        Assert.Equal(suscripciones, _db.Suscripciones.IgnoreQueryFilters().Count());
+    }
+
+    /// <summary>
+    /// Los CSV de ejemplo de <c>docs/ejemplos</c> se validan contra el catálogo del seed: si
+    /// alguien cambia el catálogo, el ejemplo no puede quedar roto sin que nadie se entere.
+    /// </summary>
+    [Fact]
+    public async Task Los_csv_de_ejemplo_validan_contra_el_catalogo_del_seed()
+    {
+        var norte = _db.Tenants.Single(t => t.Slug == "norte").Id;
+        var importador = new ImportadorDeStock(
+            _db,
+            new GuardarVehiculoRequestValidator(TimeProvider.System),
+            new PoliticaDePlanEnBase(_db, TimeProvider.System, Options.Create(new OpcionesDeCobranza())),
+            TimeProvider.System);
+
+        var bueno = await importador.ProcesarAsync(norte, Ejemplo("stock-de-ejemplo.csv"), confirmar: false, cargarCostos: true);
+        Assert.Empty(bueno.Errores);
+        Assert.Equal(8, bueno.Validas);
+
+        var malo = await importador.ProcesarAsync(norte, Ejemplo("stock-con-errores.csv"), confirmar: false, cargarCostos: true);
+        Assert.Equal(1, malo.Validas);
+        Assert.Equal([3, 4, 5, 6, 7], malo.Errores.Select(e => e.Fila).Distinct().Order());
+    }
+
+    private static string Ejemplo(string nombre)
+    {
+        var carpeta = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (carpeta is not null && !File.Exists(Path.Combine(carpeta.FullName, "AutomotoraSaaS.sln")))
+        {
+            carpeta = carpeta.Parent;
+        }
+
+        return File.ReadAllText(Path.Combine(
+            carpeta?.FullName ?? throw new InvalidOperationException("No se encontró la raíz del repo."),
+            "docs", "ejemplos", nombre));
     }
 
     public void Dispose()

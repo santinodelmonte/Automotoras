@@ -49,6 +49,9 @@ public enum ErrorDeAutenticacion
 
     /// <summary>La contraseña nueva es igual a la provisoria.</summary>
     PasswordRepetida = 4,
+
+    /// <summary>La cuenta acumuló demasiados intentos fallidos y está frenada un rato.</summary>
+    DemasiadosIntentos = 5,
 }
 
 /// <summary>
@@ -66,7 +69,13 @@ public sealed record ResultadoDeAutenticacion
 
     public ErrorDeAutenticacion? Error { get; }
 
+    /// <summary>Con <see cref="ErrorDeAutenticacion.DemasiadosIntentos"/>: cuánto falta para poder reintentar.</summary>
+    public TimeSpan? ReintentarEn { get; private init; }
+
     public static ResultadoDeAutenticacion Ok(SesionDto sesion) => new(sesion, null);
 
     public static ResultadoDeAutenticacion Falla(ErrorDeAutenticacion error) => new(null, error);
+
+    public static ResultadoDeAutenticacion Frenado(TimeSpan reintentarEn)
+        => new(null, ErrorDeAutenticacion.DemasiadosIntentos) { ReintentarEn = reintentarEn };
 }

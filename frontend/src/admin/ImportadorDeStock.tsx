@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { FileUp } from 'lucide-react'
 import { api, ApiError, guardarArchivo } from '@shared/api/client'
 import type { ResultadoDeImportacion } from '@shared/api/types'
 
@@ -65,27 +66,38 @@ export function ImportadorDeStock({ importar, alImportar }: Props) {
         <button
           type="button"
           onClick={() => void bajarPlantilla()}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 hover:border-slate-500"
+          className="panel-boton-secundario"
         >
           Descargar plantilla
         </button>
 
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(e) => {
-            setArchivo(e.target.files?.[0] ?? null)
-            setResultado(null)
-            setMensaje(null)
-          }}
-          className="text-sm"
-        />
+        {/*
+         * El input nativo escribe "No se ha seleccionado ningún archivo" con la letra y el
+         * idioma del navegador, y lo corta como quiere. Queda escondido detrás de un botón, y
+         * el nombre del archivo sale del estado: así también se borra después de cargar.
+         */}
+        <label className="panel-boton-secundario min-w-0 max-w-full cursor-pointer">
+          <FileUp aria-hidden className="size-4 shrink-0" />
+          <span className="truncate">{archivo ? archivo.name : 'Elegir archivo'}</span>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(e) => {
+              setArchivo(e.target.files?.[0] ?? null)
+              setResultado(null)
+              setMensaje(null)
+              // Sin esto, volver a elegir el mismo archivo corregido no dispara el cambio.
+              e.target.value = ''
+            }}
+            className="sr-only"
+          />
+        </label>
 
         <button
           type="button"
           disabled={!archivo || trabajando}
           onClick={() => void correr(false)}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 hover:border-slate-500 disabled:opacity-50"
+          className="panel-boton-secundario"
         >
           {trabajando ? 'Procesando…' : 'Validar'}
         </button>
@@ -95,7 +107,7 @@ export function ImportadorDeStock({ importar, alImportar }: Props) {
             type="button"
             disabled={trabajando}
             onClick={() => void correr(true)}
-            className="rounded-lg bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="panel-boton px-3 py-1.5"
           >
             Cargar {resultado.validas} vehículos
           </button>

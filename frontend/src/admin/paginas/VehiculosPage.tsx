@@ -1,23 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, ImageOff, Plus, Search } from 'lucide-react'
 import { api } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { entero, kilometros, precio } from '@shared/ui/formato'
 import type { EstadoVehiculo, PaginaDe, VehiculoResumen } from '@shared/api/types'
+import { Insignia, Pagina, type Tono } from '@admin/ui/Pagina'
+import { useSesion } from '@shared/auth/useSesion'
 
 const ESTADOS: EstadoVehiculo[] = ['Disponible', 'Reservado', 'Vendido', 'Pausado']
 
-const COLORES: Record<EstadoVehiculo, string> = {
-  Disponible: 'bg-emerald-100 text-emerald-800',
-  Reservado: 'bg-amber-100 text-amber-800',
-  Vendido: 'bg-slate-200 text-slate-700',
-  Pausado: 'bg-slate-100 text-slate-500',
+const TONOS: Record<EstadoVehiculo, Tono> = {
+  Disponible: 'verde',
+  Reservado: 'ambar',
+  Vendido: 'gris',
+  Pausado: 'gris',
 }
 
 export function VehiculosPage() {
   const [parametros, setParametros] = useSearchParams()
   const [pagina, setPagina] = useState<PaginaDe<VehiculoResumen> | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const esOwner = useSesion()?.usuario.rol === 'Owner'
 
   const filtros = useMemo(
     () => ({
@@ -57,39 +61,56 @@ export function VehiculosPage() {
   )
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Vehículos</h1>
-
-        <Link
-          to="/admin/vehiculos/nuevo"
-          className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500"
-        >
-          Cargar vehículo
-        </Link>
-      </div>
-
-      <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4">
-        <select
-          value={filtros.estado}
-          onChange={(e) => cambiar('estado', e.target.value)}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">Todos los estados</option>
-          {ESTADOS.map((estado) => (
-            <option key={estado} value={estado}>
-              {estado}
-            </option>
+    <Pagina
+      titulo="Vehículos"
+      descripcion="Tu stock completo. Lo disponible es lo único que se ve en el sitio."
+      acciones={
+        <>
+          {esOwner && (
+            <Link to="/admin/plan#importar" className="panel-boton-secundario">
+              Importar planilla
+            </Link>
+          )}
+          <Link to="/admin/vehiculos/nuevo" className="panel-boton">
+            <Plus aria-hidden className="size-4" />
+            Cargar vehículo
+          </Link>
+        </>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <div role="group" aria-label="Filtrar por estado" className="-mx-4 flex max-w-[calc(100%+2rem)] gap-1 overflow-x-auto px-4 sm:mx-0 sm:max-w-none sm:px-0">
+          {['', ...ESTADOS].map((estado) => (
+            <button
+              key={estado || 'todos'}
+              type="button"
+              aria-pressed={filtros.estado === estado}
+              onClick={() => cambiar('estado', estado)}
+              className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                filtros.estado === estado
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+              }`}
+            >
+              {estado || 'Todos'}
+            </button>
           ))}
-        </select>
+        </div>
 
-        <input
-          type="search"
-          placeholder="Buscar por marca, modelo o color"
-          defaultValue={filtros.texto}
-          onBlur={(e) => cambiar('texto', e.target.value)}
-          className="min-w-56 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        />
+        <label className="relative min-w-56 flex-1">
+          <span className="sr-only">Buscar en el stock</span>
+          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            placeholder="Buscar por marca, modelo o color"
+            defaultValue={filtros.texto}
+            onBlur={(e) => cambiar('texto', e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') cambiar('texto', e.currentTarget.value)
+            }}
+            className="panel-entrada pl-9"
+          />
+        </label>
       </div>
 
       {error && <Estado titulo="No pudimos cargar el stock" detalle={error} />}
@@ -97,96 +118,107 @@ export function VehiculosPage() {
       {!error && !pagina && (
         <div className="flex flex-col gap-2">
           {[0, 1, 2, 3].map((i) => (
-            <Esqueleto key={i} className="h-20" />
+            <Esqueleto key={i} className="h-20 rounded-2xl" />
           ))}
         </div>
       )}
 
       {pagina && pagina.items.length === 0 && (
-        <Estado
-          titulo="No hay vehículos con esos filtros"
-          detalle="Probá limpiando la búsqueda o cargá el primero."
-        />
+        <div className="panel-seccion">
+          <Estado
+            titulo="No hay vehículos con esos filtros"
+            detalle="Probá limpiando la búsqueda, o cargá el primero."
+          >
+            <Link to="/admin/vehiculos/nuevo" className="panel-boton mt-2">
+              <Plus aria-hidden className="size-4" />
+              Cargar vehículo
+            </Link>
+          </Estado>
+        </div>
       )}
 
       {pagina && pagina.items.length > 0 && (
         <>
-          <p className="text-sm text-slate-500">{entero(pagina.total)} vehículos</p>
-
-          <ul className="flex flex-col gap-2">
+          <ul className="panel-seccion divide-y divide-slate-100 p-0 sm:p-0">
             {pagina.items.map((vehiculo) => (
               <li key={vehiculo.id}>
                 <Link
                   to={`/admin/vehiculos/${vehiculo.id}`}
-                  className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-slate-400"
+                  className="flex items-center gap-4 px-4 py-3 transition first:rounded-t-2xl last:rounded-b-2xl hover:bg-slate-50 sm:px-5"
                 >
-                  <div className="h-16 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                  <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100">
                     {vehiculo.fotoPortadaUrl ? (
-                      <img
-                        src={vehiculo.fotoPortadaUrl}
-                        alt=""
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                      />
+                      <img src={vehiculo.fotoPortadaUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
                     ) : (
-                      <div className="grid h-full place-items-center text-xs text-slate-400">
-                        Sin foto
+                      <div className="grid h-full place-items-center text-slate-300" title="Sin foto">
+                        <ImageOff aria-hidden className="size-5" />
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">
+                    <p className="truncate font-medium text-slate-900">
                       {vehiculo.marca} {vehiculo.modelo}
-                      {vehiculo.version && (
-                        <span className="font-normal text-slate-500"> {vehiculo.version}</span>
-                      )}
+                      {vehiculo.version && <span className="font-normal text-slate-500"> {vehiculo.version}</span>}
                     </p>
-                    <p className="text-sm text-slate-500">
-                      {vehiculo.anio} · {kilometros(vehiculo.kilometraje)} ·{' '}
-                      {vehiculo.diasEnGondola} días en góndola
+                    <p className="mt-0.5 text-sm text-slate-500">
+                      {vehiculo.anio} · <span className="whitespace-nowrap">{kilometros(vehiculo.kilometraje)}</span>
+                      <span className="hidden sm:inline">
+                        {' '}
+                        · {entero(vehiculo.diasEnGondola)} {vehiculo.diasEnGondola === 1 ? 'día' : 'días'} en góndola
+                      </span>
                     </p>
+
+                    {/* En el celular el precio va abajo: al costado le come el ancho al nombre. */}
+                    <div className="mt-1.5 flex items-center gap-2 sm:hidden">
+                      <p className="font-semibold tabular-nums text-slate-900">{precio(vehiculo.precio, vehiculo.moneda)}</p>
+                      <Insignia tono={TONOS[vehiculo.estado]}>{vehiculo.estado}</Insignia>
+                    </div>
                   </div>
 
-                  <div className="text-right">
-                    <p className="font-bold">{precio(vehiculo.precio, vehiculo.moneda)}</p>
-                    <span
-                      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${COLORES[vehiculo.estado]}`}
-                    >
-                      {vehiculo.estado}
-                    </span>
+                  <div className="hidden shrink-0 flex-col items-end gap-1.5 sm:flex">
+                    <p className="font-semibold tabular-nums text-slate-900">{precio(vehiculo.precio, vehiculo.moneda)}</p>
+                    <Insignia tono={TONOS[vehiculo.estado]}>{vehiculo.estado}</Insignia>
                   </div>
                 </Link>
               </li>
             ))}
           </ul>
 
-          {pagina.totalDePaginas > 1 && (
-            <nav className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                disabled={pagina.pagina <= 1}
-                onClick={() => cambiarPagina(pagina.pagina - 1)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-40"
-              >
-                Anterior
-              </button>
-              <span className="text-sm text-slate-500">
-                {pagina.pagina} de {pagina.totalDePaginas}
-              </span>
-              <button
-                type="button"
-                disabled={pagina.pagina >= pagina.totalDePaginas}
-                onClick={() => cambiarPagina(pagina.pagina + 1)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-40"
-              >
-                Siguiente
-              </button>
-            </nav>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+            <p>
+              {entero(pagina.total)} {pagina.total === 1 ? 'vehículo' : 'vehículos'}
+            </p>
+
+            {pagina.totalDePaginas > 1 && (
+              <nav aria-label="Páginas" className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={pagina.pagina <= 1}
+                  onClick={() => cambiarPagina(pagina.pagina - 1)}
+                  className="panel-boton-secundario px-2.5"
+                  aria-label="Página anterior"
+                >
+                  <ChevronLeft aria-hidden className="size-4" />
+                </button>
+                <span className="tabular-nums">
+                  {pagina.pagina} de {pagina.totalDePaginas}
+                </span>
+                <button
+                  type="button"
+                  disabled={pagina.pagina >= pagina.totalDePaginas}
+                  onClick={() => cambiarPagina(pagina.pagina + 1)}
+                  className="panel-boton-secundario px-2.5"
+                  aria-label="Página siguiente"
+                >
+                  <ChevronRight aria-hidden className="size-4" />
+                </button>
+              </nav>
+            )}
+          </div>
         </>
       )}
-    </div>
+    </Pagina>
   )
 
   function cambiarPagina(numero: number) {

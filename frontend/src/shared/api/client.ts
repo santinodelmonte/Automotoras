@@ -29,6 +29,7 @@ import type {
   PaginaDe,
   ProblemDetails,
   RegistrarEventoRequest,
+  BusquedaDeTextoRequest,
   ReporteDeDemanda,
   ResolverSolicitudRequest,
   Sesion,
@@ -132,8 +133,16 @@ function publicar(sesion: Sesion | null) {
   for (const escucha of escuchas) escucha(sesion)
 }
 
+/**
+ * Si la última sesión la cerró el usuario con "Salir". En ese caso la pantalla en la que
+ * estaba no se recuerda: quien entre después puede ser otra persona, con otro rol.
+ */
+let cerradaAPedido = false
+
 export const sesion = {
   actual: () => sesionActual,
+
+  fueCerradaAPedido: () => cerradaAPedido,
 
   suscribirse(escucha: Escucha): () => void {
     escuchas.add(escucha)
@@ -141,6 +150,7 @@ export const sesion = {
   },
 
   establecer(nueva: Sesion) {
+    cerradaAPedido = false
     sesionGuardada.guardar(nueva)
     publicar(nueva)
   },
@@ -148,6 +158,12 @@ export const sesion = {
   limpiar() {
     sesionGuardada.borrar()
     publicar(null)
+  },
+
+  /** El "Salir" del usuario, a diferencia de una sesión que venció. */
+  cerrar() {
+    cerradaAPedido = true
+    sesion.limpiar()
   },
 }
 
@@ -426,6 +442,13 @@ export const api = {
     verificarDominio: (id: number) =>
       request<VerificacionDeDominio>(`/api/admin/tenants/${id}/verificar-dominio`, { method: 'POST' }),
 
+    /** Contraseña provisoria para un usuario de la automotora: el camino del dueño que se olvidó la suya. */
+    restablecerPassword: (id: number, email: string, password: string) =>
+      request<void>(`/api/admin/tenants/${id}/restablecer-password`, {
+        method: 'POST',
+        body: { email, password },
+      }),
+
     actualizarTenant: (id: number, cambios: ActualizarTenantRequest) =>
       request<TenantAdmin>(`/api/admin/tenants/${id}`, { method: 'PUT', body: cambios }),
 
@@ -463,6 +486,9 @@ export const api = {
         method: 'POST',
         form: formularioDeArchivo(archivo),
       }),
+
+    carrocerias: (signal?: AbortSignal) =>
+      request<string[]>('/api/admin/catalogo/carrocerias', { signal }),
 
     marcas: (signal?: AbortSignal) => request<Marca[]>('/api/admin/catalogo/marcas', { signal }),
 
@@ -526,6 +552,14 @@ export const api = {
       request<void>(rutaPublica(slug, '/api/public/events'), {
         method: 'POST',
         body: evento,
+        sinReintento: true,
+      }).catch(() => undefined),
+
+    /** Registra lo que se buscó en la portada y no se encontró. Como los eventos, sin propagar errores. */
+    busqueda: (slug: string | null, busqueda: BusquedaDeTextoRequest) =>
+      request<void>(rutaPublica(slug, '/api/public/busquedas'), {
+        method: 'POST',
+        body: busqueda,
         sinReintento: true,
       }).catch(() => undefined),
   },

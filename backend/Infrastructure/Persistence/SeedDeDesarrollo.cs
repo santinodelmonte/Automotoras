@@ -46,6 +46,11 @@ public static class SeedDeDesarrollo
         // filtros globales devuelven cero filas, y un chequeo de idempotencia que siempre
         // ve la base vacía vuelve a insertar y choca contra los índices únicos.
         await SembrarTenantsAsync(db, hash, reloj, cancellationToken).ConfigureAwait(false);
+
+        // Planes y estados de pago distintos para algunas: sin esto la cobranza, los topes y
+        // la página de mantenimiento no se pueden ver en desarrollo.
+        await SeedDeCobranza.EjecutarAsync(db, hash, reloj, cancellationToken).ConfigureAwait(false);
+
         await SembrarCatalogoAsync(db, cancellationToken).ConfigureAwait(false);
 
         // El stock y su historia de demanda van al final: necesitan las automotoras y el
@@ -93,8 +98,8 @@ public static class SeedDeDesarrollo
     }
 
     /// <summary>
-    /// Plan Full para todas: en desarrollo hace falta ver todas las pantallas, y con un
-    /// plan más chico los reportes y el benchmark quedarían cerrados por plan.
+    /// Plan Full para todas, de entrada. <see cref="SeedDeCobranza"/> después le cambia el
+    /// plan y el estado de pago a algunas, para poder ver los demás casos.
     /// </summary>
     private static async Task AsegurarSuscripcionAsync(
         AppDbContext db,

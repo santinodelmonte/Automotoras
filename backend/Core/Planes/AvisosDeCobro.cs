@@ -20,6 +20,18 @@ public interface INotificadorPorCorreo
 /// <param name="Fallidos">Avisos que no salieron; se reintentan en la próxima corrida.</param>
 public sealed record ResultadoDeAvisosDto(int Enviados, int YaAvisados, int Fallidos, bool CorreoConfigurado);
 
+/// <summary>Lo que borró la limpieza de analítica, y desde qué fecha para atrás.</summary>
+public sealed record ResultadoDeLimpiezaDto(int EventosBorrados, int BusquedasBorradas, DateTime AnterioresA);
+
+/// <summary>Cuánto se guarda el detalle de visitas y búsquedas.</summary>
+public static class RetencionDeAnalitica
+{
+    public const int MesesPorDefecto = 24;
+
+    /// <summary>Un año de reporte más un mes de margen: con menos, el reporte anual saldría cortado.</summary>
+    public const int MesesMinimos = 13;
+}
+
 /// <summary>Los textos de los avisos de vencimiento.</summary>
 public static class AvisosDeCobro
 {

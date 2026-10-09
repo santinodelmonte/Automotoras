@@ -23,16 +23,19 @@ public sealed class ServicioDeAutenticacion : IServicioDeAutenticacion
     private readonly GeneradorDeTokens _tokens;
     private readonly TimeProvider _reloj;
     private readonly JwtOptions _opciones;
+    private readonly FrenoDeLogin _freno;
 
     public ServicioDeAutenticacion(
         AppDbContext db,
         IPasswordHasher hasher,
         GeneradorDeTokens tokens,
         TimeProvider reloj,
-        IOptions<JwtOptions> opciones)
+        IOptions<JwtOptions> opciones,
+        FrenoDeLogin freno)
     {
         ArgumentNullException.ThrowIfNull(opciones);
 
+        _freno = freno;
         _db = db;
         _hasher = hasher;
         _tokens = tokens;
@@ -48,6 +51,13 @@ public sealed class ServicioDeAutenticacion : IServicioDeAutenticacion
 
         var email = Emails.Normalizar(request.Email);
 
+        // Antes de buscar al usuario y de hashear: frenada, la cuenta responde igual exista
+        // o no, y no le cuesta CPU al servidor.
+        if (_freno.Frenada(email) is { } espera)
+        {
+            return ResultadoDeAutenticacion.Frenado(espera);
+        }
+
         var usuario = await _db.Users
             .IgnoreQueryFilters()
             .Include(u => u.Tenant)
@@ -57,13 +67,17 @@ public sealed class ServicioDeAutenticacion : IServicioDeAutenticacion
         if (usuario is null)
         {
             _hasher.VerificarSenuelo(request.Password);
+            _freno.RegistrarFallo(email);
             return ResultadoDeAutenticacion.Falla(ErrorDeAutenticacion.CredencialesInvalidas);
         }
 
         if (!_hasher.Verificar(request.Password, usuario.PasswordHash))
         {
+            _freno.RegistrarFallo(email);
             return ResultadoDeAutenticacion.Falla(ErrorDeAutenticacion.CredencialesInvalidas);
         }
+
+        _freno.Limpiar(email);
 
         // El estado se mira después de verificar la contraseña, no antes: si un usuario
         // dado de baja recibiera "usuario inactivo" con cualquier contraseña, el mensaje

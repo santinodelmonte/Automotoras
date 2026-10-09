@@ -52,7 +52,7 @@ public sealed class PublicSitemapController : ControllerBase
 
         var tenant = await _db.Tenants
             .Where(t => t.Id == tenantId)
-            .Select(t => new { t.Slug, t.DominioCustom })
+            .Select(t => new { t.Slug, t.DominioCustom, t.DominioVerificadoEn })
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -69,10 +69,10 @@ public sealed class PublicSitemapController : ControllerBase
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        // Si la automotora ya tiene su dominio, las URLs son las de su dominio. Si todavía
-        // no, se usa por dónde entró el request: publicar URLs de un dominio que no existe
-        // deja el sitemap entero apuntando a la nada.
-        var baseUrl = tenant.DominioCustom is { Length: > 0 } dominio
+        // Si la automotora ya tiene su dominio verificado, las URLs son las de su dominio.
+        // Si todavía no, se usa por dónde entró el request: un dominio cargado pero sin
+        // verificar todavía no sirve el sitio, y publicarlo deja el sitemap apuntando a la nada.
+        var baseUrl = tenant.DominioCustom is { Length: > 0 } dominio && tenant.DominioVerificadoEn is not null
             ? $"https://{dominio}"
             : $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
 

@@ -20,9 +20,8 @@ namespace AutomotoraSaaS.Api.Controllers;
 /// suspendido, que es justamente cuando más se necesita.
 /// <para>
 /// No hay un solo filtro por tenant escrito a mano: el filtro global recorta todo al tenant
-/// del token. Los eventos van agregados por día y no crudos, porque el crudo tiene la IP
-/// hasheada y el <c>session_id</c> de los visitantes, que no le sirven a nadie y son datos
-/// de terceros.
+/// del token. Los eventos van agregados por día y no crudos, porque el crudo tiene el
+/// <c>session_id</c> de cada visita, que no le sirve a nadie fuera de los reportes.
 /// </para>
 /// <para>
 /// El ZIP se arma en memoria y se descarga directo: nada se escribe en el disco del

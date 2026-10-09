@@ -1,0 +1,9 @@
+marca,modelo,version,anio,kilometraje,combustible,transmision,color,puertas,motor,precio,moneda,descripcion,destacado,precio_costo
+Toyota,Corolla,,2019,85.000,Nafta,Automatica,Gris,4,1.8,18500,Usd,"Único dueño, service oficial al día.",si,16000
+Volkswagen,Gol,,2017,112000,Nafta,Manual,Blanco,5,1.6,9.800,Usd,Ideal primer auto.,no,
+Chevrolet,Onix,,2021,38000,Nafta,Manual,Rojo,5,1.0 Turbo,15900,Usd,"Garantía de fábrica vigente.",no,14200
+Fiat,Cronos,,2020,64000,Nafta,Manual,Negro,4,1.3,13.500,Usd,,no,
+Peugeot,208,,2022,21000,Nafta,Automática,Azul,5,1.2,19900,Usd,"Pantalla táctil, cámara de retroceso.",si,
+Renault,Duster,,2018,98000,Diésel,Manual,Gris,5,1.5 dCi,16500,Usd,Muy cuidada.,no,
+Ford,Ranger,,2020,120000,Diesel,Manual,Blanco,4,2.2,32000,Usd,"Doble cabina, 4x4.",no,29000
+Hyundai,Creta,,2021,45000,Nafta,Automatica,Plata,5,1.6,"1.150.000,00",Uyu,Precio en pesos.,no,

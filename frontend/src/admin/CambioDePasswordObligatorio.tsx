@@ -46,7 +46,7 @@ export function CambioDePasswordObligatorio() {
   return (
     <form
       onSubmit={(e) => void cambiar(e)}
-      className="mx-auto flex max-w-md flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6"
+      className="mx-auto flex max-w-md flex-col gap-4 panel-seccion"
     >
       <div>
         <h1 className="text-xl font-bold">Elegí tu contraseña</h1>
@@ -57,7 +57,7 @@ export function CambioDePasswordObligatorio() {
       </div>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-slate-700">Contraseña provisoria</span>
+        <span className="panel-etiqueta">Contraseña provisoria</span>
         <input
           type="password"
           required
@@ -69,7 +69,7 @@ export function CambioDePasswordObligatorio() {
       </label>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-slate-700">Contraseña nueva</span>
+        <span className="panel-etiqueta">Contraseña nueva</span>
         <input
           type="password"
           required
@@ -79,14 +79,14 @@ export function CambioDePasswordObligatorio() {
           className={entrada}
         />
         {errores.Nueva?.map((error) => (
-          <span key={error} className="mt-1 block text-xs text-rose-600">
+          <span key={error} className="panel-error">
             {error}
           </span>
         ))}
       </label>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-slate-700">Repetila</span>
+        <span className="panel-etiqueta">Repetila</span>
         <input
           type="password"
           required
@@ -100,7 +100,7 @@ export function CambioDePasswordObligatorio() {
       <button
         type="submit"
         disabled={guardando}
-        className="rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+        className="panel-boton"
       >
         {guardando ? 'Guardando…' : 'Guardar y entrar'}
       </button>

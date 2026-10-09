@@ -494,7 +494,6 @@ public static class SeedDeVehiculos
         Tipo = tipo,
         SessionId = sesion,
         CreatedAt = cuando,
-        UserAgent = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36",
     };
 
     /// <summary>

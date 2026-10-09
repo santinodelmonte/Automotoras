@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
-import type { Marca, Modelo, OpcionesDeCatalogo } from '@shared/api/types'
+import { etiqueta } from '@shared/ui/formato'
+import type { Marca, Modelo } from '@shared/api/types'
 
 /**
  * Catálogo global de marcas y modelos.
@@ -12,7 +13,7 @@ import type { Marca, Modelo, OpcionesDeCatalogo } from '@shared/api/types'
 export function CatalogoPage() {
   const [marcas, setMarcas] = useState<Marca[] | null>(null)
   const [modelos, setModelos] = useState<Modelo[]>([])
-  const [opciones, setOpciones] = useState<OpcionesDeCatalogo | null>(null)
+  const [carrocerias, setCarrocerias] = useState<string[] | null>(null)
   const [marcaId, setMarcaId] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [mensaje, setMensaje] = useState<string | null>(null)
@@ -47,7 +48,7 @@ export function CatalogoPage() {
     const controlador = new AbortController()
 
     void cargarMarcas(controlador.signal)
-    api.catalogo.opciones(controlador.signal).then(setOpciones).catch(() => undefined)
+    api.admin.carrocerias(controlador.signal).then(setCarrocerias).catch(() => undefined)
 
     return () => controlador.abort()
   }, [cargarMarcas])
@@ -77,7 +78,7 @@ export function CatalogoPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Catálogo</h1>
+        <h1 className="panel-titulo">Catálogo</h1>
         <p className="mt-1 text-sm text-slate-500">
           Marca, modelo y versión son tablas, nunca texto libre. Es lo que hace que la
           analítica de demanda signifique algo.
@@ -87,15 +88,17 @@ export function CatalogoPage() {
       {mensaje && <p className="text-sm text-slate-600">{mensaje}</p>}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="font-semibold">Marcas</h2>
+        <section className="panel-seccion">
+          <h2 className="panel-seccion-titulo">
+            Marcas{marcas && <span className="ml-1.5 font-normal text-slate-400">{marcas.length}</span>}
+          </h2>
 
           <div className="mt-3 flex gap-2">
             <input
               placeholder="Nueva marca"
               value={nuevaMarca}
               onChange={(e) => setNuevaMarca(e.target.value)}
-              className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="flex-1 panel-entrada w-auto"
             />
             <button
               type="button"
@@ -106,7 +109,7 @@ export function CatalogoPage() {
                   'Marca creada.',
                 ).then(() => setNuevaMarca(''))
               }
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="panel-boton"
             >
               Agregar
             </button>
@@ -140,7 +143,7 @@ export function CatalogoPage() {
                         marca.activo ? 'Marca dada de baja.' : 'Marca reactivada.',
                       )
                     }
-                    className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                    className="panel-boton-chico"
                   >
                     {marca.activo ? 'Baja' : 'Alta'}
                   </button>
@@ -150,8 +153,8 @@ export function CatalogoPage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="font-semibold">
+        <section className="panel-seccion">
+          <h2 className="panel-seccion-titulo">
             Modelos {marcaId > 0 && `de ${marcas?.find((m) => m.id === marcaId)?.nombre ?? ''}`}
           </h2>
 
@@ -164,16 +167,16 @@ export function CatalogoPage() {
                   placeholder="Nuevo modelo"
                   value={nuevoModelo}
                   onChange={(e) => setNuevoModelo(e.target.value)}
-                  className="min-w-32 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="min-w-32 flex-1 panel-entrada w-auto"
                 />
                 <select
                   value={carroceria}
                   onChange={(e) => setCarroceria(e.target.value)}
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                  className="panel-entrada w-auto pl-2"
                 >
-                  {(opciones?.carrocerias ?? [carroceria]).map((valor) => (
+                  {(carrocerias ?? [carroceria]).map((valor) => (
                     <option key={valor} value={valor}>
-                      {valor}
+                      {etiqueta(valor)}
                     </option>
                   ))}
                 </select>
@@ -192,7 +195,7 @@ export function CatalogoPage() {
                       'Modelo creado.',
                     ).then(() => setNuevoModelo(''))
                   }
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  className="panel-boton"
                 >
                   Agregar
                 </button>
@@ -220,7 +223,7 @@ export function CatalogoPage() {
                           modelo.activo ? 'Modelo dado de baja.' : 'Modelo reactivado.',
                         )
                       }
-                      className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                      className="panel-boton-chico"
                     >
                       {modelo.activo ? 'Baja' : 'Alta'}
                     </button>

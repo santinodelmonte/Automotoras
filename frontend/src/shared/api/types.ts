@@ -329,6 +329,13 @@ export interface RegistrarEventoRequest {
   sessionId: string | null
 }
 
+/** Lo escrito en el buscador de la portada. `confirmada` si se apretó "Buscar". */
+export interface BusquedaDeTextoRequest {
+  texto: string
+  confirmada: boolean
+  sessionId: string | null
+}
+
 // ---------------------------------------------------------------- panel
 
 export interface ConfiguracionDeTenant {
@@ -448,6 +455,8 @@ export interface BusquedaSinResultado {
   veces: number
   sesiones: number
   ultimaVez: string
+  /** Lo que se escribió en el buscador, cuando no se reconoció marca ni modelo. */
+  texto: string | null
 }
 
 /** `Comprar` cuando no hay una sola unidad de eso; si hay, el problema es otro. */

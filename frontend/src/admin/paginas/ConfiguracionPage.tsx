@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ImageOff } from 'lucide-react'
 import { api, ApiError } from '@shared/api/client'
 import { achicar, nombreDeSubida } from '@admin/imagenes'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
@@ -85,10 +86,13 @@ export function ConfiguracionPage() {
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <h1 className="text-2xl font-bold">Configuración</h1>
+      <header>
+        <h1 className="panel-titulo">Configuración</h1>
+        <p className="mt-1 max-w-2xl panel-ayuda">Cómo se ve tu sitio y cómo te contactan los compradores.</p>
+      </header>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="font-semibold">Dirección del sitio</h2>
+      <section className="panel-seccion">
+        <h2 className="panel-seccion-titulo">Dirección del sitio</h2>
         <p className="mt-1 text-sm text-slate-500">
           El slug y el dominio propio los administra el equipo del SaaS: cambiarlos apaga la
           dirección por la que tu sitio ya está circulando, y hay que coordinar el DNS.
@@ -106,14 +110,26 @@ export function ConfiguracionPage() {
         </dl>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="font-semibold">Logo</h2>
+      <section className="panel-seccion">
+        <div className="flex items-center gap-4">
+          {/* Sin logo también se muestra la caja: si no, no se entiende qué se está cambiando. */}
+          <div className="grid h-14 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 sm:h-16 sm:w-28">
+            {actual.logoUrl ? (
+              <img src={actual.logoUrl} alt="Logo actual" className="max-h-full max-w-full object-contain" />
+            ) : (
+              <span className="flex flex-col items-center gap-1 text-xs text-slate-400">
+                <ImageOff aria-hidden className="size-4" />
+                Sin logo
+              </span>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <h2 className="panel-seccion-titulo">Logo</h2>
             <p className="text-sm text-slate-500">Se achica solo antes de subir.</p>
           </div>
 
-          <label className="cursor-pointer rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:border-slate-500">
+          <label className="cursor-pointer panel-boton-secundario">
             Cambiar
             <input
               ref={entrada}
@@ -124,13 +140,16 @@ export function ConfiguracionPage() {
             />
           </label>
         </div>
-
-        {actual.logoUrl && (
-          <img src={actual.logoUrl} alt="Logo" className="mt-4 h-16 w-auto" />
-        )}
       </section>
 
-      <form onSubmit={guardar} className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5">
+      <form onSubmit={guardar} className="flex flex-col gap-4 panel-seccion">
+        <div>
+          <h2 className="panel-seccion-titulo">Marca y contacto</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Los colores pintan tu sitio; el WhatsApp y el teléfono son por donde te escriben los compradores.
+          </p>
+        </div>
+
         <Campo etiqueta="Nombre" errores={errores.Nombre}>
           <input
             required
@@ -147,7 +166,7 @@ export function ConfiguracionPage() {
                 type="color"
                 value={actual.colorPrimario ?? '#0f172a'}
                 onChange={(e) => cambiar('colorPrimario', e.target.value)}
-                className="h-10 w-14 rounded-lg border border-slate-300"
+                className="h-[38px] w-14 shrink-0 cursor-pointer rounded-lg border border-slate-300 bg-white p-1"
               />
               <input
                 placeholder="#059669"
@@ -164,7 +183,7 @@ export function ConfiguracionPage() {
                 type="color"
                 value={actual.colorSecundario ?? '#0f172a'}
                 onChange={(e) => cambiar('colorSecundario', e.target.value)}
-                className="h-10 w-14 rounded-lg border border-slate-300"
+                className="h-[38px] w-14 shrink-0 cursor-pointer rounded-lg border border-slate-300 bg-white p-1"
               />
               <input
                 placeholder="#0f172a"
@@ -206,7 +225,7 @@ export function ConfiguracionPage() {
           <button
             type="submit"
             disabled={guardando}
-            className="rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="panel-boton"
           >
             {guardando ? 'Guardando…' : 'Guardar'}
           </button>
@@ -217,7 +236,7 @@ export function ConfiguracionPage() {
   )
 }
 
-const entradaClase = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
+const entradaClase = 'panel-entrada'
 
 function Campo({
   etiqueta,
@@ -230,10 +249,10 @@ function Campo({
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{etiqueta}</span>
+      <span className="panel-etiqueta">{etiqueta}</span>
       {children}
       {errores?.map((error) => (
-        <span key={error} className="mt-1 block text-xs text-rose-600">
+        <span key={error} className="panel-error">
           {error}
         </span>
       ))}

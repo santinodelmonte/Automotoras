@@ -74,6 +74,11 @@ Monorepo:
 > - El endpoint de gestión de usuarios (`/api/users`) se adelantó al paso 3: es el recurso
 >   de tenant que hacía falta para escribir el test de aislamiento end-to-end que pide el
 >   criterio de aceptación número uno.
+> - El tracking es anónimo: de la visita se guarda solo un `session_id` al azar que vive en
+>   `sessionStorage` y muere con la pestaña. `ip_hash`, `user_agent` y `referer` se
+>   eliminaron (migración `QuitarDatosDeVisita`): ningún reporte los usaba y eran datos
+>   personales sin finalidad. El detalle de más de 24 meses lo borra
+>   `POST /api/jobs/limpieza-de-analitica`. Lo que sigue sobre `localStorage` es historia.
 > - El `session_id` del tracking lo genera y guarda el cliente en `localStorage`, no una
 >   cookie de primera parte como pide el brief. El sitio y la API viven en orígenes
 >   distintos —y con dominio propio por automotora eso no cambia—, así que una cookie

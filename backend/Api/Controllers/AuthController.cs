@@ -1,8 +1,11 @@
 using AutomotoraSaaS.Api.Auth;
 using AutomotoraSaaS.Api.Filters;
+using System.Globalization;
 using AutomotoraSaaS.Core.Auth;
+using AutomotoraSaaS.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AutomotoraSaaS.Api.Controllers;
 
@@ -23,13 +26,15 @@ public sealed class AuthController : ControllerBase
     [HttpPost("login")]
     [AllowAnonymous]
     [PermitidoConPasswordProvisoria]
+    [EnableRateLimiting(LimitesDeLogin.Politica)]
     [ProducesResponseType(typeof(SesionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SesionDto>> Login(LoginRequest request, CancellationToken cancellationToken)
     {
         var resultado = await _auth.LoginAsync(request, cancellationToken).ConfigureAwait(false);
 
-        return resultado.Sesion is { } sesion ? Ok(sesion) : Rechazo(resultado.Error);
+        return resultado.Sesion is { } sesion ? Ok(sesion) : Rechazo(resultado.Error, resultado.ReintentarEn);
     }
 
     [HttpPost("refresh")]
@@ -138,8 +143,18 @@ public sealed class AuthController : ControllerBase
     /// existe" y "la contraseña no es esa". Decir cuál de las dos es convierte el login en
     /// un verificador de qué cuentas existen.
     /// </summary>
-    private ActionResult<SesionDto> Rechazo(ErrorDeAutenticacion? error)
+    private ActionResult<SesionDto> Rechazo(ErrorDeAutenticacion? error, TimeSpan? reintentarEn = null)
     {
+        if (error == ErrorDeAutenticacion.DemasiadosIntentos)
+        {
+            var minutos = Math.Max(1, (int)Math.Ceiling((reintentarEn ?? FrenoDeLogin.Ventana).TotalMinutes));
+            Response.Headers.RetryAfter = (minutos * 60).ToString(CultureInfo.InvariantCulture);
+
+            return Problem(
+                detail: $"Demasiados intentos fallidos con este email. Probá de nuevo en {minutos} {(minutos == 1 ? "minuto" : "minutos")}.",
+                statusCode: StatusCodes.Status429TooManyRequests);
+        }
+
         var detalle = error switch
         {
             ErrorDeAutenticacion.UsuarioInactivo => "El usuario está dado de baja.",
@@ -149,4 +164,19 @@ public sealed class AuthController : ControllerBase
 
         return Problem(detail: detalle, statusCode: StatusCodes.Status401Unauthorized);
     }
+}
+
+/// <summary>
+/// Tope de intentos de login por IP. El freno por cuenta está en <see cref="FrenoDeLogin"/>.
+/// </summary>
+/// <remarks>
+/// Veinte por minuto alcanzan para una oficina entera entrando a la mañana detrás de la
+/// misma IP, y le cortan a un script la posibilidad de recorrer una lista de emails. Se
+/// puede subir por configuración (<c>Seguridad:LoginsPorMinutoPorIp</c>).
+/// </remarks>
+public static class LimitesDeLogin
+{
+    public const string Politica = "login";
+
+    public const int LoginsPorMinutoPorDefecto = 20;
 }

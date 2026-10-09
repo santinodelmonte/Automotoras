@@ -5,6 +5,7 @@ using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Planes;
 using AutomotoraSaaS.Core.Tenants;
+using AutomotoraSaaS.Core.Users;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -375,6 +376,60 @@ public sealed class AdminTenantsController : ControllerBase
 
     private static string? Dominio(string? valor)
         => string.IsNullOrWhiteSpace(valor) ? null : valor.Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// Le pone una contraseña provisoria a un usuario de la automotora. Es el camino para
+    /// el dueño que se olvidó la suya: a un vendedor se la puede restablecer su dueño, pero
+    /// al dueño no tenía quién.
+    /// </summary>
+    /// <remarks>
+    /// Provisoria siempre: con ella lo único que puede hacer es cambiarla, así que la que
+    /// eligió el SuperAdmin no le sirve a nadie más que para ese primer ingreso. Cierra las
+    /// sesiones abiertas, igual que cualquier cambio de contraseña. Se busca por email
+    /// dentro de la automotora del id: un email de otra automotora responde 404.
+    /// </remarks>
+    [HttpPost("{id:int}/restablecer-password")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RestablecerPassword(
+        int id,
+        RestablecerPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var email = Emails.Normalizar(request.Email);
+
+        var usuario = await _db.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.TenantId == id && u.Email == email, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (usuario is null)
+        {
+            return Problem(
+                detail: $"La automotora {id} no tiene ningún usuario con el email {email}.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var ahora = _reloj.GetUtcNow().UtcDateTime;
+
+        using (var _ = _db.PermitirEscrituraCrossTenant())
+        {
+            usuario.PasswordHash = _hasher.Hash(request.Password);
+            usuario.DebeCambiarPassword = true;
+
+            await _db.RefreshTokens
+                .IgnoreQueryFilters()
+                .Where(r => r.UserId == usuario.Id && r.RevocadoEn == null)
+                .ForEachAsync(r => r.RevocadoEn = ahora, cancellationToken)
+                .ConfigureAwait(false);
+
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return NoContent();
+    }
 
     private ActionResult Conflicto(string detalle)
         => Problem(detail: detalle, statusCode: StatusCodes.Status409Conflict);

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, ApiError } from '@shared/api/client'
 import type { EstadoVehiculo, Vehiculo } from '@shared/api/types'
+import { EntradaNumerica } from '@admin/ui/EntradaNumerica'
 
 const ESTADOS: EstadoVehiculo[] = ['Disponible', 'Reservado', 'Vendido', 'Pausado']
 
@@ -20,7 +21,7 @@ interface Props {
 export function CambiarEstado({ vehiculo, onCambio }: Props) {
   const [pidiendoVenta, setPidiendoVenta] = useState(false)
   const [fechaVenta, setFechaVenta] = useState(new Date().toISOString().slice(0, 10))
-  const [precioVenta, setPrecioVenta] = useState(String(vehiculo.precio))
+  const [precioVenta, setPrecioVenta] = useState<number | null>(vehiculo.precio)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
@@ -61,7 +62,7 @@ export function CambiarEstado({ vehiculo, onCambio }: Props) {
           value={vehiculo.estado}
           disabled={enviando}
           onChange={(e) => elegir(e.target.value as EstadoVehiculo)}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+          className="panel-entrada w-auto font-medium"
         >
           {ESTADOS.map((estado) => (
             <option key={estado} value={estado}>
@@ -81,42 +82,35 @@ export function CambiarEstado({ vehiculo, onCambio }: Props) {
           </p>
 
           <label className="mt-3 block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Fecha</span>
+            <span className="panel-etiqueta">Fecha</span>
             <input
               type="date"
               value={fechaVenta}
               onChange={(e) => setFechaVenta(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="panel-entrada"
             />
           </label>
 
           <label className="mt-3 block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">
-              Precio de venta ({vehiculo.moneda.toUpperCase()})
+            <span className="panel-etiqueta">
+              Precio de venta
             </span>
-            <input
-              type="number"
-              min={1}
-              step="0.01"
-              value={precioVenta}
-              onChange={(e) => setPrecioVenta(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            />
+            <EntradaNumerica moneda={vehiculo.moneda} valor={precioVenta} onCambio={setPrecioVenta} />
           </label>
 
           <div className="mt-4 flex gap-2">
             <button
               type="button"
-              disabled={enviando || !fechaVenta || Number(precioVenta) <= 0}
-              onClick={() => void aplicar('Vendido', fechaVenta, Number(precioVenta))}
-              className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              disabled={enviando || !fechaVenta || !precioVenta || precioVenta <= 0}
+              onClick={() => void aplicar('Vendido', fechaVenta, precioVenta)}
+              className="flex-1 panel-boton px-3 py-2"
             >
               Marcar vendido
             </button>
             <button
               type="button"
               onClick={() => setPidiendoVenta(false)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="panel-entrada w-auto"
             >
               Cancelar
             </button>

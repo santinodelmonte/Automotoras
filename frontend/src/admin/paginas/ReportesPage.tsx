@@ -3,7 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { Tarjeta } from '@shared/ui/Tarjeta'
-import { entero, fecha, precio } from '@shared/ui/formato'
+import { entero, etiqueta, fecha, precio } from '@shared/ui/formato'
+import { CircleCheck, Clock, Eye, MessageCircle } from 'lucide-react'
+import { Insignia, type Tono } from '@admin/ui/Pagina'
 import type {
   Benchmark,
   BusquedaSinResultado,
@@ -65,7 +67,7 @@ export function ReportesPage() {
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Demanda</h1>
+          <h1 className="panel-titulo">Demanda</h1>
           <p className="text-sm text-slate-500">
             Qué miran, qué consultan y qué buscan sin encontrar en tu sitio.
           </p>
@@ -78,7 +80,8 @@ export function ReportesPage() {
             siguientes.set('dias', e.target.value)
             setParametros(siguientes, { replace: true })
           }}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+          aria-label="Período"
+          className="panel-entrada w-auto"
         >
           <option value="30">Últimos 30 días</option>
           <option value="90">Últimos 90 días</option>
@@ -113,20 +116,25 @@ function Resumen({ reporte }: { reporte: ReporteDeDemanda }) {
   const { resumen } = reporte
 
   return (
-    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Tarjeta titulo="Vistas de ficha" valor={entero(resumen.vistas)} />
+    <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Tarjeta titulo="Vistas de ficha" valor={entero(resumen.vistas)} icono={Eye} tono="azul" />
       <Tarjeta
         titulo="Consultas"
+        icono={MessageCircle}
+        tono="violeta"
         valor={entero(resumen.consultas)}
         nota={`${resumen.consultasPorCienVistas.toLocaleString('es-UY')} cada 100 vistas`}
       />
       <Tarjeta
         titulo="Días en góndola"
+        icono={Clock}
+        tono="ambar"
         valor={entero(resumen.diasEnGondolaMediana)}
         nota={`Mediana. Promedio: ${entero(resumen.diasEnGondolaPromedio)}`}
       />
       <Tarjeta
         titulo="Vendidos"
+        icono={CircleCheck}
         valor={entero(resumen.vendidosEnElPeriodo)}
         nota={
           resumen.diasHastaLaVentaPromedio === null
@@ -147,8 +155,8 @@ function Resumen({ reporte }: { reporte: ReporteDeDemanda }) {
  */
 function Comparativa({ benchmark }: { benchmark: Benchmark }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <h2 className="font-semibold">Contra el resto del mercado</h2>
+    <section className="panel-seccion">
+      <h2 className="panel-seccion-titulo">Contra el resto del mercado</h2>
 
       {!benchmark.disponible ? (
         <p className="mt-3 text-sm text-slate-400">{benchmark.motivo}</p>
@@ -173,7 +181,7 @@ function Comparativa({ benchmark }: { benchmark: Benchmark }) {
 function Comparacion({ titulo, metrica }: { titulo: string; metrica: MetricaComparada | null }) {
   if (!metrica || metrica.propio === null || metrica.mercado === null) {
     return (
-      <div className="rounded-lg border border-slate-200 p-4">
+      <div className="panel-caja">
         <p className="text-sm text-slate-500">{titulo}</p>
         <p className="mt-2 text-xs text-slate-400">Sin muestra suficiente para comparar.</p>
       </div>
@@ -183,7 +191,7 @@ function Comparacion({ titulo, metrica }: { titulo: string; metrica: MetricaComp
   const mejor = metrica.mejorCuandoBaja ? metrica.propio < metrica.mercado : metrica.propio > metrica.mercado
 
   return (
-    <div className="rounded-lg border border-slate-200 p-4">
+    <div className="panel-caja">
       <p className="text-sm text-slate-500">{titulo}</p>
 
       <p className={`mt-1 text-3xl font-bold ${mejor ? 'text-emerald-700' : 'text-slate-900'}`}>
@@ -203,8 +211,8 @@ function Comparacion({ titulo, metrica }: { titulo: string; metrica: MetricaComp
  */
 function Sugerencias({ sugerencias }: { sugerencias: SugerenciaDeCompra[] }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <h2 className="font-semibold">Qué conviene comprar</h2>
+    <section className="panel-seccion">
+      <h2 className="panel-seccion-titulo">Qué conviene comprar</h2>
       <p className="mt-1 text-sm text-slate-500">
         Sale de las búsquedas que no encontraron nada, cruzadas contra tu stock publicado.
       </p>
@@ -220,7 +228,7 @@ function Sugerencias({ sugerencias }: { sugerencias: SugerenciaDeCompra[] }) {
         {sugerencias.map((sugerencia, indice) => (
           <li
             key={`${sugerencia.modeloId ?? sugerencia.marcaId ?? sugerencia.carroceria}-${indice}`}
-            className="rounded-lg border border-slate-200 p-4"
+            className="panel-caja"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -235,15 +243,9 @@ function Sugerencias({ sugerencias }: { sugerencias: SugerenciaDeCompra[] }) {
                 </p>
               </div>
 
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  sugerencia.tipo === 'Comprar'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-amber-100 text-amber-800'
-                }`}
-              >
+              <Insignia tono={sugerencia.tipo === 'Comprar' ? 'verde' : 'ambar'}>
                 {sugerencia.tipo === 'Comprar' ? 'Comprar' : 'Revisar lo que tenés'}
-              </span>
+              </Insignia>
             </div>
 
             <p className="mt-2 text-sm text-slate-600">
@@ -260,12 +262,12 @@ function Sugerencias({ sugerencias }: { sugerencias: SugerenciaDeCompra[] }) {
   )
 }
 
-const ETIQUETAS: Record<SenalDeDemanda, { texto: string; clase: string }> = {
-  SinDatos: { texto: 'Sin datos', clase: 'bg-slate-100 text-slate-500' },
-  Saludable: { texto: 'Saludable', clase: 'bg-emerald-100 text-emerald-800' },
-  PrecioAlto: { texto: 'Precio alto', clase: 'bg-amber-100 text-amber-800' },
-  SinVisibilidad: { texto: 'Sin visibilidad', clase: 'bg-sky-100 text-sky-800' },
-  Estancado: { texto: 'Estancado', clase: 'bg-rose-100 text-rose-800' },
+const ETIQUETAS: Record<SenalDeDemanda, { texto: string; tono: Tono }> = {
+  SinDatos: { texto: 'Sin datos', tono: 'gris' },
+  Saludable: { texto: 'Saludable', tono: 'verde' },
+  PrecioAlto: { texto: 'Precio alto', tono: 'ambar' },
+  SinVisibilidad: { texto: 'Sin visibilidad', tono: 'azul' },
+  Estancado: { texto: 'Estancado', tono: 'rojo' },
 }
 
 /** La evidencia, unidad por unidad. */
@@ -280,16 +282,49 @@ function PorVehiculo({ reporte }: { reporte: ReporteDeDemanda }) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <h2 className="font-semibold">Unidad por unidad</h2>
+    <section className="panel-seccion">
+      <h2 className="panel-seccion-titulo">Unidad por unidad</h2>
       <p className="mt-1 text-sm text-slate-500">
         Muchas vistas con pocas consultas apunta al precio. Pocas vistas apunta a las fotos, al
         título o a que el aviso no aparece.
       </p>
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-slate-400">
+      {/*
+       * En el celular la tabla no entra ni con scroll: se ven dos columnas y la señal, que
+       * es lo que importa, queda afuera. Cada unidad pasa a ser una fila apilada.
+       */}
+      <ul className="mt-4 divide-y divide-slate-100 md:hidden">
+        {reporte.vehiculos.map((fila) => (
+          <li key={fila.vehiculoId} className="py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <Link
+                  to={`/admin/vehiculos/${fila.vehiculoId}`}
+                  className="font-medium hover:underline"
+                >
+                  {fila.marca} {fila.modelo} {fila.anio}
+                </Link>
+                <p className="text-xs text-slate-400">{precio(fila.precio, fila.moneda)}</p>
+              </div>
+
+              <Insignia tono={ETIQUETAS[fila.senal].tono}>{ETIQUETAS[fila.senal].texto}</Insignia>
+            </div>
+
+            <dl className="mt-2 grid grid-cols-4 gap-2 text-xs">
+              <Dato titulo="Góndola">{entero(fila.diasEnGondola)} d</Dato>
+              <Dato titulo="Vistas">{entero(fila.vistas)}</Dato>
+              <Dato titulo="Consultas">{entero(fila.consultas)}</Dato>
+              <Dato titulo="vs. mercado">
+                <ContraElMercado fila={fila} />
+              </Dato>
+            </dl>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-4 hidden md:block">
+        <table className="panel-tabla w-full text-sm">
+          <thead className="text-left">
             <tr>
               <th className="pb-2 font-medium">Vehículo</th>
               <th className="pb-2 text-right font-medium">Góndola</th>
@@ -323,11 +358,7 @@ function PorVehiculo({ reporte }: { reporte: ReporteDeDemanda }) {
                   <ContraElMercado fila={fila} />
                 </td>
                 <td className="py-3 text-right">
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ETIQUETAS[fila.senal].clase}`}
-                  >
-                    {ETIQUETAS[fila.senal].texto}
-                  </span>
+                  <Insignia tono={ETIQUETAS[fila.senal].tono}>{ETIQUETAS[fila.senal].texto}</Insignia>
                 </td>
               </tr>
             ))}
@@ -335,6 +366,15 @@ function PorVehiculo({ reporte }: { reporte: ReporteDeDemanda }) {
         </table>
       </div>
     </section>
+  )
+}
+
+function Dato({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-slate-400">{titulo}</dt>
+      <dd className="mt-0.5 text-sm text-slate-700">{children}</dd>
+    </div>
   )
 }
 
@@ -370,8 +410,8 @@ function ContraElMercado({ fila }: { fila: DemandaDeVehiculo }) {
  */
 function SinResultado({ busquedas }: { busquedas: BusquedaSinResultado[] }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <h2 className="font-semibold">Búsquedas sin resultado</h2>
+    <section className="panel-seccion">
+      <h2 className="panel-seccion-titulo">Búsquedas sin resultado</h2>
       <p className="mt-1 text-sm text-slate-500">
         Cada fila es gente que entró, buscó y se fue con las manos vacías.
       </p>
@@ -386,14 +426,14 @@ function SinResultado({ busquedas }: { busquedas: BusquedaSinResultado[] }) {
         {busquedas.map((busqueda, indice) => (
           <li
             key={`${busqueda.modeloId ?? busqueda.marcaId ?? busqueda.carroceria ?? 'libre'}-${indice}`}
-            className="flex flex-wrap items-center justify-between gap-2 py-3"
+            className="flex items-center justify-between gap-4 py-3"
           >
-            <div>
+            <div className="min-w-0">
               <p className="font-medium">{queSeBuscaba(busqueda)}</p>
               <p className="text-xs text-slate-400">Última vez: {fecha(busqueda.ultimaVez)}</p>
             </div>
 
-            <div className="text-right text-sm">
+            <div className="shrink-0 text-right text-sm">
               <p className="font-semibold">
                 {entero(busqueda.sesiones)} {busqueda.sesiones === 1 ? 'visita' : 'visitas'}
               </p>
@@ -421,12 +461,16 @@ function queSeBuscaba(grupo: {
   moneda: string | null
   presupuestoTipico?: number | null
   precioHasta?: number | null
+  texto?: string | null
 }): string {
   const partes: string[] = []
 
+  // Escrito en el buscador y sin nada del catálogo que lo explique: se muestra tal cual.
+  if (!grupo.modelo && !grupo.marca && !grupo.carroceria && grupo.texto) return `“${grupo.texto}”`
+
   if (grupo.modelo) partes.push(grupo.marca ? `${grupo.marca} ${grupo.modelo}` : grupo.modelo)
   else if (grupo.marca) partes.push(grupo.marca)
-  else if (grupo.carroceria) partes.push(grupo.carroceria)
+  else if (grupo.carroceria) partes.push(etiqueta(grupo.carroceria))
 
   if (grupo.anioDesde && grupo.anioHasta) partes.push(`${grupo.anioDesde}–${grupo.anioHasta}`)
   else if (grupo.anioDesde) partes.push(`${grupo.anioDesde} en adelante`)

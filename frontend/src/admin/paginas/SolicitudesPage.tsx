@@ -58,19 +58,25 @@ export function SolicitudesPage() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <h1 className="text-2xl font-bold">Solicitudes de modelo</h1>
+      <header>
+        <h1 className="panel-titulo">Solicitudes de modelo</h1>
+        <p className="mt-1 max-w-2xl panel-ayuda">Modelos que pidieron las automotoras porque no estaban en el catálogo.</p>
+      </header>
 
       {mensaje && <p className="text-sm text-slate-600">{mensaje}</p>}
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-semibold">Pendientes ({pendientes.length})</h2>
+        <h2 className="panel-seccion-titulo">Pendientes ({pendientes.length})</h2>
 
         {pendientes.length === 0 && (
-          <p className="text-sm text-slate-400">No hay solicitudes esperando.</p>
+          <p className="panel-seccion text-sm text-slate-500">
+            No hay solicitudes esperando. Cuando una automotora pida un modelo que no está en el
+            catálogo, aparece acá.
+          </p>
         )}
 
         {pendientes.map((solicitud) => (
-          <div key={solicitud.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <div key={solicitud.id} className="panel-seccion p-4 sm:p-4">
             <p className="font-semibold">
               {solicitud.marca} {solicitud.nombreModelo}
               <span className="ml-2 text-xs font-normal text-slate-400">
@@ -85,21 +91,21 @@ export function SolicitudesPage() {
               placeholder="Nota (obligatoria si se rechaza)"
               value={notas[solicitud.id] ?? ''}
               onChange={(e) => setNotas({ ...notas, [solicitud.id]: e.target.value })}
-              className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="mt-3 panel-entrada"
             />
 
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
                 onClick={() => void resolver(solicitud, true)}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+                className="panel-boton"
               >
                 Aprobar y crear
               </button>
               <button
                 type="button"
                 onClick={() => void resolver(solicitud, false)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+                className="panel-boton-secundario"
               >
                 Rechazar
               </button>
@@ -110,9 +116,9 @@ export function SolicitudesPage() {
 
       {resueltas.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="font-semibold">Resueltas</h2>
+          <h2 className="panel-seccion-titulo">Resueltas</h2>
 
-          <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+          <ul className="divide-y divide-slate-100 panel-seccion p-0 sm:p-0">
             {resueltas.map((solicitud) => (
               <li key={solicitud.id} className="px-4 py-3 text-sm">
                 <p>

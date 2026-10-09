@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Check, Minus } from 'lucide-react'
 import { api, ApiError, guardarArchivo } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { fecha, precio } from '@shared/ui/formato'
@@ -54,12 +55,15 @@ export function PlanPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Mi plan</h1>
+      <header>
+        <h1 className="panel-titulo">Mi plan</h1>
+        <p className="mt-1 max-w-2xl panel-ayuda">Qué incluye tu plan, hasta cuándo está pago y cuánto estás usando.</p>
+      </header>
 
-      <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-3">
+      <section className="grid gap-4 panel-seccion sm:grid-cols-3">
         <div>
           <p className="text-sm text-slate-500">Plan</p>
-          <p className="text-2xl font-bold">{plan?.nombre ?? 'Sin plan vigente'}</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight">{plan?.nombre ?? 'Sin plan vigente'}</p>
           {plan && (
             <p className="text-sm text-slate-500">
               {precio(plan.precioMensual, plan.moneda)} por mes, más IVA
@@ -69,7 +73,7 @@ export function PlanPage() {
 
         <div>
           <p className="text-sm text-slate-500">Pago cubierto hasta</p>
-          <p className="text-2xl font-bold">{fecha(situacion.pagaHasta)}</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{fecha(situacion.pagaHasta)}</p>
           <p className="text-sm text-slate-500">{textoDelEstado[situacion.estado]}</p>
         </div>
 
@@ -80,9 +84,9 @@ export function PlanPage() {
       </section>
 
       {plan && (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm">
+        <section className="panel-seccion text-sm">
           <h2 className="mb-3 font-semibold">Qué incluye</h2>
-          <ul className="grid gap-1 sm:grid-cols-2">
+          <ul className="grid gap-2 sm:grid-cols-2">
             <Incluye si>Sitio público con tu marca y panel de administración</Incluye>
             <Incluye si={plan.incluyeReportes}>Reportes de demanda y sugerencias de compra</Incluye>
             <Incluye si={plan.incluyeBenchmark}>Comparación anónima contra el mercado</Incluye>
@@ -97,8 +101,8 @@ export function PlanPage() {
         </section>
       )}
 
-      <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="font-semibold">Tus datos</h2>
+      <section className="flex flex-col gap-3 panel-seccion">
+        <h2 className="panel-seccion-titulo">Tus datos</h2>
         <p className="text-sm text-slate-500">
           Un ZIP con todo el stock (incluido lo vendido), las fotos, las consultas y las vistas
           por día, y las búsquedas que no encontraron resultado. Se abre en Excel o Google
@@ -109,7 +113,7 @@ export function PlanPage() {
             type="button"
             onClick={() => void exportar()}
             disabled={exportando}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+            className="panel-boton-secundario"
           >
             {exportando ? 'Generando…' : 'Descargar todos mis datos'}
           </button>
@@ -117,8 +121,8 @@ export function PlanPage() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="font-semibold">Cargar stock desde una planilla</h2>
+      <section id="importar" className="flex scroll-mt-24 flex-col gap-3 panel-seccion">
+        <h2 className="panel-seccion-titulo">Cargar stock desde una planilla</h2>
         <ImportadorDeStock importar={api.vehiculos.importar} alImportar={() => void cargar()} />
       </section>
     </div>
@@ -155,8 +159,13 @@ function Medidor({ titulo, uso }: { titulo: string; uso: Uso }) {
 
 function Incluye({ si, children }: { si: boolean; children: React.ReactNode }) {
   return (
-    <li className={si ? 'text-slate-800' : 'text-slate-400 line-through'}>
-      {si ? '✓' : '—'} {children}
+    <li className={`flex items-start gap-2 ${si ? 'text-slate-800' : 'text-slate-400'}`}>
+      {si ? (
+        <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+      ) : (
+        <Minus aria-hidden className="mt-0.5 size-4 shrink-0" />
+      )}
+      <span className={si ? '' : 'line-through'}>{children}</span>
     </li>
   )
 }

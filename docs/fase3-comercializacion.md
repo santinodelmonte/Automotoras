@@ -240,8 +240,8 @@ hacerlo salvo entrando a la base.
 - `GET /api/tenant/exportacion` — disponible para el Owner, en cualquier momento y no solo
   ante una baja. Devuelve un ZIP con CSVs: vehículos con todos sus campos y estados, fotos
   (URLs), consultas, eventos agregados por vehículo y por día, y búsquedas sin resultados.
-- Los eventos van agregados y no crudos: el crudo incluye IP hasheada y `session_id`, que
-  no le sirven a nadie y son datos de terceros.
+- Los eventos van agregados y no crudos: el crudo incluye el `session_id` de cada visita,
+  que no le sirve a nadie fuera de los reportes.
 - Generación en memoria y descarga directa. **Nada se escribe en el disco del servidor**,
   por la restricción de deploy que ya rige en todo el proyecto.
 

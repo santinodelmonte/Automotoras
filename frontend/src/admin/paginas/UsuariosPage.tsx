@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Insignia } from '@admin/ui/Pagina'
 import { api, ApiError } from '@shared/api/client'
 import { useSesion } from '@shared/auth/useSesion'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
@@ -75,10 +76,13 @@ export function UsuariosPage() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <h1 className="text-2xl font-bold">Usuarios</h1>
+      <header>
+        <h1 className="panel-titulo">Usuarios</h1>
+        <p className="mt-1 max-w-2xl panel-ayuda">Quién entra al panel de tu automotora.</p>
+      </header>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="font-semibold">De esta automotora</h2>
+      <section className="panel-seccion">
+        <h2 className="panel-seccion-titulo">De esta automotora</h2>
         <p className="mt-1 text-sm text-slate-500">
           El servidor no devuelve los de ninguna otra.
         </p>
@@ -89,21 +93,32 @@ export function UsuariosPage() {
           <ul className="mt-4 divide-y divide-slate-100">
             {usuarios.map((usuario) => (
               <li key={usuario.id} className="flex items-center justify-between gap-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">
-                    {usuario.nombre}
-                    {!usuario.activo && <span className="ml-2 text-xs text-slate-400">de baja</span>}
-                  </p>
-                  <p className="truncate text-sm text-slate-500">
-                    {usuario.email} · {usuario.rol}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <span
+                    aria-hidden
+                    className={`grid size-9 shrink-0 place-items-center rounded-full text-sm font-semibold ${
+                      usuario.activo ? 'bg-slate-100 text-slate-700' : 'bg-slate-50 text-slate-300'
+                    }`}
+                  >
+                    {usuario.nombre.trim().charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <p className={`flex flex-wrap items-center gap-2 font-medium ${usuario.activo ? '' : 'text-slate-400'}`}>
+                      <span className="truncate">{usuario.nombre}</span>
+                      <Insignia tono={usuario.rol === 'Owner' ? 'violeta' : 'azul'}>
+                        {usuario.rol === 'Owner' ? 'Dueño' : 'Vendedor'}
+                      </Insignia>
+                      {!usuario.activo && <Insignia tono="gris">De baja</Insignia>}
+                    </p>
+                    <p className="truncate text-sm text-slate-500">{usuario.email}</p>
+                  </div>
                 </div>
 
                 {usuario.id !== sesion?.usuario.id && (
                   <button
                     type="button"
                     onClick={() => void alternar(usuario)}
-                    className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-500"
+                    className="shrink-0 panel-boton-secundario"
                   >
                     {usuario.activo ? 'Dar de baja' : 'Reactivar'}
                   </button>
@@ -114,9 +129,9 @@ export function UsuariosPage() {
         )}
       </section>
 
-      <form onSubmit={crear} className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5">
+      <form onSubmit={crear} className="flex flex-col gap-4 panel-seccion">
         <div>
-          <h2 className="font-semibold">Nuevo vendedor</h2>
+          <h2 className="panel-seccion-titulo">Nuevo vendedor</h2>
           <p className="mt-1 text-sm text-slate-500">
             Los vendedores cargan y editan vehículos, y ven las consultas. No acceden a
             reportes, ni a la analítica, ni al precio de costo.
@@ -159,7 +174,7 @@ export function UsuariosPage() {
           <button
             type="submit"
             disabled={creando}
-            className="rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="panel-boton"
           >
             {creando ? 'Creando…' : 'Crear vendedor'}
           </button>
@@ -170,7 +185,7 @@ export function UsuariosPage() {
   )
 }
 
-const entradaClase = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
+const entradaClase = 'panel-entrada'
 
 function Campo({
   etiqueta,
@@ -183,10 +198,10 @@ function Campo({
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{etiqueta}</span>
+      <span className="panel-etiqueta">{etiqueta}</span>
       {children}
       {errores?.map((error) => (
-        <span key={error} className="mt-1 block text-xs text-rose-600">
+        <span key={error} className="panel-error">
           {error}
         </span>
       ))}

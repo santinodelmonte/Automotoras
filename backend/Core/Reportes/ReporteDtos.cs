@@ -187,7 +187,8 @@ public sealed record BusquedaSinResultadoDto(
     decimal? PresupuestoTipico,
     int Veces,
     int Sesiones,
-    DateTime UltimaVez);
+    DateTime UltimaVez,
+    string? Texto = null);
 
 /// <summary>
 /// Los filtros de una búsqueda, tal como se guardaron en la columna JSON.
@@ -210,6 +211,9 @@ public sealed class FiltrosDeBusquedaGuardados
     public string? Combustible { get; set; }
     public string? Transmision { get; set; }
     public string? Carroceria { get; set; }
+
+    /// <summary>Lo escrito en el buscador de la portada, cuando la búsqueda vino de ahí.</summary>
+    public string? Texto { get; set; }
 }
 
 /// <summary>

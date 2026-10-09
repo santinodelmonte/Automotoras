@@ -2,7 +2,6 @@ using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
 using AutomotoraSaaS.Core.Publico;
-using AutomotoraSaaS.Infrastructure.Analitica;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,13 +33,10 @@ public sealed class PublicEventosController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly ITenantContext _tenantContext;
-    private readonly HasheadorDeIp _hasheador;
-
-    public PublicEventosController(AppDbContext db, ITenantContext tenantContext, HasheadorDeIp hasheador)
+    public PublicEventosController(AppDbContext db, ITenantContext tenantContext)
     {
         _db = db;
         _tenantContext = tenantContext;
-        _hasheador = hasheador;
     }
 
     /// <summary>
@@ -83,9 +79,6 @@ public sealed class PublicEventosController : ControllerBase
             VehiculoId = request.VehiculoId,
             Tipo = tipo,
             SessionId = Recortar(request.SessionId, 64),
-            IpHash = _hasheador.Hashear(HttpContext.Connection.RemoteIpAddress, tenantId),
-            UserAgent = Recortar(Request.Headers.UserAgent.ToString(), 400),
-            Referer = Recortar(Request.Headers.Referer.ToString(), 500),
         });
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

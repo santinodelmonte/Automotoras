@@ -151,19 +151,9 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("IpHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)")
-                        .HasColumnName("ip_hash");
-
                     b.Property<string>("Metadata")
                         .HasColumnType("json")
                         .HasColumnName("metadata");
-
-                    b.Property<string>("Referer")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)")
-                        .HasColumnName("referer");
 
                     b.Property<string>("SessionId")
                         .HasMaxLength(64)
@@ -177,11 +167,6 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
                     b.Property<int>("Tipo")
                         .HasColumnType("int")
                         .HasColumnName("tipo");
-
-                    b.Property<string>("UserAgent")
-                        .HasMaxLength(400)
-                        .HasColumnType("varchar(400)")
-                        .HasColumnName("user_agent");
 
                     b.Property<int?>("VehiculoId")
                         .HasColumnType("int")
