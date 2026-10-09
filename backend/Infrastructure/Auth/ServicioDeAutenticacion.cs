@@ -161,6 +161,47 @@ public sealed class ServicioDeAutenticacion : IServicioDeAutenticacion
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<ResultadoDeAutenticacion> CambiarPasswordPropiaAsync(
+        int userId,
+        CambiarPasswordPropiaRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var usuario = await _db.Users
+            .IgnoreQueryFilters()
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (usuario is null || !_hasher.Verificar(request.Actual, usuario.PasswordHash))
+        {
+            return ResultadoDeAutenticacion.Falla(ErrorDeAutenticacion.CredencialesInvalidas);
+        }
+
+        if (!usuario.Activo || usuario.Tenant is { Activo: false })
+        {
+            return ResultadoDeAutenticacion.Falla(ErrorDeAutenticacion.UsuarioInactivo);
+        }
+
+        // La provisoria la conoce quien la puso: reusarla es no haberla cambiado.
+        if (_hasher.Verificar(request.Nueva, usuario.PasswordHash))
+        {
+            return ResultadoDeAutenticacion.Falla(ErrorDeAutenticacion.PasswordRepetida);
+        }
+
+        usuario.PasswordHash = _hasher.Hash(request.Nueva);
+        usuario.DebeCambiarPassword = false;
+
+        // Las demás sesiones se cierran: si el cambio es porque la contraseña se filtró,
+        // dejarlas vivas haría que no sirviera de nada.
+        await RevocarTodosLosTokensAsync(usuario.Id, _reloj.GetUtcNow().UtcDateTime, cancellationToken)
+            .ConfigureAwait(false);
+
+        return ResultadoDeAutenticacion.Ok(
+            await AbrirSesionAsync(usuario, cancellationToken).ConfigureAwait(false));
+    }
+
     private async Task<SesionDto> AbrirSesionAsync(User usuario, CancellationToken cancellationToken)
     {
         var (accessToken, expiraEn) = _tokens.CrearAccessToken(usuario);

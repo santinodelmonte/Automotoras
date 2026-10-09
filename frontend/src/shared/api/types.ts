@@ -12,6 +12,13 @@ export interface ProblemDetails {
   detail?: string
   instance?: string
   errors?: Record<string, string[]>
+  /** Límite del plan (`type: 'limite-del-plan'`): qué recurso, el tope y el uso actual. */
+  recurso?: string
+  plan?: string | null
+  tope?: number | null
+  uso?: number | null
+  /** Sitio en mantenimiento (`type: 'sitio-en-mantenimiento'`): de qué automotora. */
+  automotora?: string
 }
 
 /** Una página de resultados, con el total para pintar el paginador. */
@@ -37,6 +44,8 @@ export interface Usuario {
   nombre: string
   rol: Rol
   activo: boolean
+  /** La contraseña la puso otra persona: hay que cambiarla antes de usar el panel. */
+  debeCambiarPassword?: boolean
 }
 
 /** Sesión abierta: el par de tokens y a quién pertenecen. */
@@ -516,6 +525,13 @@ export interface CrearTenantRequest {
   emailDelOwner: string
   nombreDelOwner: string
   passwordDelOwner: string
+  /** Código del plan. Sin él, el servidor asigna el plan por defecto. */
+  plan?: string | null
+  colorPrimario?: string | null
+  colorSecundario?: string | null
+  whatsapp?: string | null
+  telefono?: string | null
+  direccion?: string | null
 }
 
 export interface ActualizarTenantRequest {
@@ -523,6 +539,115 @@ export interface ActualizarTenantRequest {
   nombre: string
   dominioCustom: string | null
   activo: boolean
+}
+
+// ---------------------------------------------------------------- Planes y cobranza
+
+export type EstadoDeCobro = 'Vigente' | 'PorVencer' | 'Gracia' | 'Suspendido'
+
+export interface Plan {
+  id: number
+  codigo: string
+  nombre: string
+  precioMensual: number
+  moneda: string
+  /** Nulo es sin límite. */
+  maxVehiculos: number | null
+  maxUsuarios: number | null
+  incluyeReportes: boolean
+  incluyeBenchmark: boolean
+  incluyeDominioPropio: boolean
+  horasSoporteMes: number
+  activo: boolean
+}
+
+export type GuardarPlanRequest = Omit<Plan, 'id'>
+
+export interface Uso {
+  usados: number
+  tope: number | null
+  /** Pasó el 80 % del tope. */
+  cercaDelTope: boolean
+}
+
+export interface SituacionDelPlan {
+  plan: Plan | null
+  estado: EstadoDeCobro
+  pagaHasta: string | null
+  /** Cero es "vence hoy"; negativo, días vencido. */
+  diasParaVencer: number | null
+  vehiculos: Uso
+  usuarios: Uso
+}
+
+export interface Suscripcion {
+  id: number
+  plan: Plan
+  inicio: string
+  fin: string | null
+  pagaHasta: string
+  motivoDeBaja: string | null
+}
+
+export interface Pago {
+  id: number
+  suscripcionId: number
+  fecha: string
+  monto: number
+  moneda: string
+  periodoDesde: string
+  periodoHasta: string
+  medio: string
+  comprobante: string | null
+  nota: string | null
+}
+
+export interface SuscripcionDeTenant {
+  tenantId: number
+  nombre: string
+  situacion: SituacionDelPlan
+  vigente: Suscripcion | null
+  historial: Suscripcion[]
+  pagos: Pago[]
+}
+
+export interface FilaDeCobranza {
+  tenantId: number
+  nombre: string
+  slug: string
+  activo: boolean
+  plan: string | null
+  pagaHasta: string | null
+  diasParaVencer: number | null
+  estado: EstadoDeCobro
+  vehiculos: Uso
+  usuarios: Uso
+}
+
+export interface RegistrarPagoRequest {
+  fecha: string
+  monto: number
+  /** Sin él, cubre desde el día siguiente al último pago. */
+  periodoDesde: string | null
+  periodoHasta: string
+  medio: string
+  moneda?: string | null
+  comprobante?: string | null
+  nota?: string | null
+}
+
+export interface ErrorDeImportacion {
+  /** Línea del archivo, contando el encabezado. Cero es un error del archivo entero. */
+  fila: number
+  columna: string | null
+  mensaje: string
+}
+
+export interface ResultadoDeImportacion {
+  filas: number
+  validas: number
+  errores: ErrorDeImportacion[]
+  importados: number
 }
 
 export interface ResolverSolicitudRequest {

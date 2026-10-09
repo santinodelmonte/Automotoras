@@ -9,6 +9,7 @@ type Carga =
   | { tipo: 'cargando' }
   | { tipo: 'ok'; tenant: TenantPublico }
   | { tipo: 'sin-automotora' }
+  | { tipo: 'mantenimiento'; automotora: string | null }
   | { tipo: 'error'; mensaje: string }
 
 /**
@@ -37,6 +38,13 @@ export function SitioPublicoLayout() {
           return
         }
 
+        // Suspendida por falta de pago: mantenimiento, nunca un error. La dirección es de
+        // la automotora y lo que ve su cliente también es su reputación.
+        if (problema instanceof ApiError && problema.problem?.type === 'sitio-en-mantenimiento') {
+          setCarga({ tipo: 'mantenimiento', automotora: problema.problem.automotora ?? null })
+          return
+        }
+
         setCarga({
           tipo: 'error',
           mensaje: problema instanceof Error ? problema.message : 'No se pudo contactar la API.',
@@ -59,6 +67,15 @@ export function SitioPublicoLayout() {
             ? `No hay ninguna automotora publicada con el slug "${slug}".`
             : 'Esta dirección no corresponde a ninguna automotora publicada. En desarrollo, entrá por /t/{slug}.'
         }
+      />
+    )
+  }
+
+  if (carga.tipo === 'mantenimiento') {
+    return (
+      <Estado
+        titulo={carga.automotora ?? 'Sitio en mantenimiento'}
+        detalle="Estamos haciendo mejoras en el sitio. Volvé a visitarnos en unos días."
       />
     )
   }

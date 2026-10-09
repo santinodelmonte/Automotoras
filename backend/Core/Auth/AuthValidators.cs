@@ -19,6 +19,18 @@ public sealed class LoginRequestValidator : AbstractValidator<LoginRequest>
     }
 }
 
+public sealed class CambiarPasswordPropiaRequestValidator : AbstractValidator<CambiarPasswordPropiaRequest>
+{
+    public CambiarPasswordPropiaRequestValidator()
+    {
+        RuleFor(x => x.Actual).NotEmpty();
+
+        RuleFor(x => x.Nueva)
+            .Must(PoliticaDePassword.EsAceptable)
+            .WithMessage(PoliticaDePassword.Mensaje);
+    }
+}
+
 public sealed class RefreshRequestValidator : AbstractValidator<RefreshRequest>
 {
     public RefreshRequestValidator()

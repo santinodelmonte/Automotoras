@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { api, sesion } from '@shared/api/client'
 import { useSesion } from '@shared/auth/useSesion'
+import { AvisoDelPlan } from '@admin/AvisoDelPlan'
+import { CambioDePasswordObligatorio } from '@admin/CambioDePasswordObligatorio'
 
 /** Navegación del panel, recortada por rol. */
 const enlaces = [
@@ -9,7 +11,9 @@ const enlaces = [
   { a: '/admin/reportes', texto: 'Demanda', roles: ['Owner'], exacto: false },
   { a: '/admin/usuarios', texto: 'Usuarios', roles: ['Owner'], exacto: false },
   { a: '/admin/configuracion', texto: 'Configuración', roles: ['Owner'], exacto: false },
+  { a: '/admin/plan', texto: 'Mi plan', roles: ['Owner'], exacto: false },
   { a: '/admin/automotoras', texto: 'Automotoras', roles: ['SuperAdmin'], exacto: false },
+  { a: '/admin/cobranza', texto: 'Cobranza', roles: ['SuperAdmin'], exacto: false },
   { a: '/admin/catalogo', texto: 'Catálogo', roles: ['SuperAdmin'], exacto: false },
   { a: '/admin/solicitudes', texto: 'Solicitudes', roles: ['SuperAdmin'], exacto: false },
 ]
@@ -80,7 +84,16 @@ export function AdminLayout() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl px-4 py-6">
-        <Outlet />
+        {/* Con una contraseña provisoria la API no deja hacer otra cosa: se muestra solo
+            el cambio, en vez de un panel donde todo responde 403. */}
+        {usuario.debeCambiarPassword ? (
+          <CambioDePasswordObligatorio />
+        ) : (
+          <>
+            {usuario.rol === 'Owner' && <AvisoDelPlan />}
+            <Outlet />
+          </>
+        )}
       </main>
     </div>
   )

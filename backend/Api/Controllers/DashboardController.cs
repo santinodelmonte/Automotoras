@@ -152,7 +152,7 @@ public sealed class DashboardController : ControllerBase
                     modelo.Marca!.Nombre,
                     modelo.Nombre,
                     vehiculo.Anio,
-                    MapeosDeVehiculo.Portada(vehiculo)?.Url,
+                    MapeosDeVehiculo.PortadaParaGrilla(vehiculo),
                     x.Vistas,
                     consultas.GetValueOrDefault(x.VehiculoId));
             })

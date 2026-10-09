@@ -3,6 +3,9 @@ using System.Text;
 using AutomotoraSaaS.Core.Common;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Planes;
+using AutomotoraSaaS.Infrastructure.Planes;
+using Microsoft.Extensions.Options;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -222,6 +225,115 @@ public sealed class JobsController : ControllerBase
     /// tiempo se puede medir para adivinar el secreto de a un carácter. Es un endpoint
     /// público: alguien lo va a probar.
     /// </remarks>
+    /// <summary>
+    /// Avisa por correo a los dueños de las automotoras que están por vencer, en gracia o
+    /// suspendidas.
+    /// </summary>
+    /// <remarks>
+    /// El job no cambia ningún estado —el estado se calcula a partir de <c>PagaHasta</c>—:
+    /// solo avisa. Cada etapa de cada vencimiento se avisa una vez, y queda registrado. Un
+    /// aviso que no sale no se registra, así que la próxima corrida lo reintenta.
+    /// </remarks>
+    [HttpPost("avisos-de-vencimiento")]
+    [ProducesResponseType(typeof(ResultadoDeAvisosDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ResultadoDeAvisosDto>> AvisosDeVencimiento(
+        [FromServices] INotificadorPorCorreo correo,
+        [FromServices] TimeProvider reloj,
+        [FromServices] IOptions<OpcionesDeCobranza> opciones,
+        [FromServices] ILogger<JobsController> logger,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(correo);
+        ArgumentNullException.ThrowIfNull(opciones);
+
+        if (!SecretoCorrecto())
+        {
+            return Unauthorized();
+        }
+
+        var hoy = PoliticaDePlanEnBase.Hoy(reloj);
+
+        var vigentes = await _db.Suscripciones
+            .IgnoreQueryFilters()
+            .Include(s => s.Plan)
+            .Include(s => s.Tenant)
+            .Where(s => s.Fin == null && s.Tenant!.Activo)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        int enviados = 0, yaAvisados = 0, fallidos = 0;
+
+        foreach (var suscripcion in vigentes)
+        {
+            var estado = CicloDeCobro.Evaluar(suscripcion.PagaHasta, hoy, opciones.Value);
+
+            if (estado == EstadoDeCobro.Vigente)
+            {
+                continue;
+            }
+
+            var avisado = await _db.AvisosDeCobro
+                .IgnoreQueryFilters()
+                .AnyAsync(
+                    a => a.SuscripcionId == suscripcion.Id && a.PagaHasta == suscripcion.PagaHasta && a.Estado == estado,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (avisado)
+            {
+                yaAvisados++;
+                continue;
+            }
+
+            var duenios = await _db.Users
+                .IgnoreQueryFilters()
+                .Where(u => u.TenantId == suscripcion.TenantId && u.Activo && u.Rol == RolUsuario.Owner)
+                .Select(u => u.Email)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            if (duenios.Count == 0)
+            {
+                logger.LogWarning("La automotora {TenantId} no tiene ningún Owner activo a quien avisarle.", suscripcion.TenantId);
+                fallidos++;
+                continue;
+            }
+
+            var (asunto, cuerpo) = AvisosDeCobro.Redactar(
+                estado, suscripcion.Tenant!.Nombre, suscripcion.Plan!.Nombre, suscripcion.PagaHasta, opciones.Value);
+
+            try
+            {
+                await correo.EnviarAsync(duenios, asunto, cuerpo, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.Net.Mail.SmtpException)
+            {
+                // Un aviso que no sale no corta la corrida: los demás pueden salir igual.
+                logger.LogWarning(ex, "No se pudo avisar a la automotora {TenantId}.", suscripcion.TenantId);
+                fallidos++;
+                continue;
+            }
+
+            using (var _ = _db.PermitirEscrituraCrossTenant())
+            {
+                _db.AvisosDeCobro.Add(new AvisoDeCobro
+                {
+                    TenantId = suscripcion.TenantId,
+                    SuscripcionId = suscripcion.Id,
+                    Estado = estado,
+                    PagaHasta = suscripcion.PagaHasta,
+                    Destinatarios = string.Join(", ", duenios),
+                });
+
+                await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            enviados++;
+        }
+
+        return Ok(new ResultadoDeAvisosDto(enviados, yaAvisados, fallidos, correo.Configurado));
+    }
+
     private bool SecretoCorrecto()
     {
         var esperado = _configuracion["Jobs:Secret"];

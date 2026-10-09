@@ -49,4 +49,10 @@ public static class ClaimsDeLaApp
 
     /// <summary>Nombre para mostrar.</summary>
     public const string Nombre = "name";
+
+    /// <summary>
+    /// Presente solo si la contraseña es provisoria. Con este claim la API no deja hacer
+    /// nada más que cambiarla.
+    /// </summary>
+    public const string PasswordProvisoria = "pwd_temp";
 }

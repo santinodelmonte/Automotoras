@@ -6,6 +6,9 @@ public sealed record LoginRequest(string Email, string Password);
 /// <summary>Cuerpo de <c>POST /api/auth/refresh</c> y <c>POST /api/auth/logout</c>.</summary>
 public sealed record RefreshRequest(string RefreshToken);
 
+/// <summary>Cambio de la contraseña propia. Pide la actual: un token robado no alcanza.</summary>
+public sealed record CambiarPasswordPropiaRequest(string Actual, string Nueva);
+
 /// <summary>
 /// Usuario tal como se expone en la API. Nunca lleva el hash de la contraseña.
 /// </summary>
@@ -16,7 +19,8 @@ public sealed record UsuarioDto(
     string Email,
     string Nombre,
     string Rol,
-    bool Activo);
+    bool Activo,
+    bool DebeCambiarPassword = false);
 
 /// <summary>
 /// Sesión abierta: el par de tokens y el usuario al que pertenecen.
@@ -42,6 +46,9 @@ public enum ErrorDeAutenticacion
 
     /// <summary>El refresh token no existe, ya se usó, se revocó o venció.</summary>
     RefreshTokenInvalido = 3,
+
+    /// <summary>La contraseña nueva es igual a la provisoria.</summary>
+    PasswordRepetida = 4,
 }
 
 /// <summary>

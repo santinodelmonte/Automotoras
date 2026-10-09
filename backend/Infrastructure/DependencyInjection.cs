@@ -6,6 +6,10 @@ using AutomotoraSaaS.Core.Storage;
 using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Analitica;
 using AutomotoraSaaS.Infrastructure.Persistence;
+using AutomotoraSaaS.Infrastructure.Planes;
+using AutomotoraSaaS.Infrastructure.Correo;
+using AutomotoraSaaS.Infrastructure.Vehiculos;
+using AutomotoraSaaS.Core.Planes;
 using AutomotoraSaaS.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -92,6 +96,18 @@ public static class DependencyInjection
         {
             services.AddSingleton<IImageStorage, R2ImageStorage>();
         }
+
+        // Planes y ciclo de cobro. Los umbrales de aviso y gracia se leen de Cobranza:*.
+        services.Configure<OpcionesDeCobranza>(configuration.GetSection(OpcionesDeCobranza.Seccion));
+        services.AddScoped<IPoliticaDePlan, PoliticaDePlanEnBase>();
+
+        // Correo saliente para los avisos de vencimiento. Sin Correo:Host, los avisos no
+        // salen y el job lo informa; no se cae nada.
+        services.Configure<OpcionesDeCorreo>(configuration.GetSection(OpcionesDeCorreo.Seccion));
+        services.AddSingleton<INotificadorPorCorreo, NotificadorSmtp>();
+
+        // Carga masiva de stock por CSV.
+        services.AddScoped<ImportadorDeStock>();
 
         // Sin estado y sin conexiones propias: consulta el DNS del sistema y devuelve.
         services.AddSingleton<IResolvedorDeDns, ResolvedorDeDnsDelSistema>();

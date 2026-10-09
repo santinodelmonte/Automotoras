@@ -31,6 +31,14 @@ export function entero(valor: number): string {
 export function fecha(iso: string | null): string {
   if (!iso) return '—'
 
+  // Una fecha sin hora (`2026-12-07`, como viajan los vencimientos) se arma en la zona
+  // local. `new Date('2026-12-07')` la toma como medianoche UTC, y en Uruguay se vería
+  // como el día anterior.
+  const soloDia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (soloDia) {
+    return fechaCorta.format(new Date(Number(soloDia[1]), Number(soloDia[2]) - 1, Number(soloDia[3])))
+  }
+
   const valor = new Date(iso)
   return Number.isNaN(valor.getTime()) ? '—' : fechaCorta.format(valor)
 }

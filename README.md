@@ -15,13 +15,14 @@ juntos y por eso el tracking de eventos se instrumenta desde el primer día.
 El detalle completo de alcance, modelo de datos y reglas de multi-tenancy está en
 [docs/brief.md](docs/brief.md).
 
-> **Estado actual: fase 2 completa, salvo los dominios propios automatizados.** Sobre la
-> fase 1 —sitio público por automotora, panel con ABM de vehículos y tablero, panel de
-> SuperAdmin, tracking de eventos y jobs por endpoint— ahora están los reportes de
-> demanda: qué se mira y no se consulta, qué se busca y no está, qué conviene comprar,
-> precio de referencia de mercado y comparación anonimizada contra el resto de las
-> automotoras. Lo único de la fase 2 que no está es la automatización de dominios propios;
-> el porqué está en [docs/brief.md](docs/brief.md).
+> **Estado actual: fase 3 —comercialización— casi completa.** Sobre las fases 1 y 2 —sitio
+> público, panel, tracking, reportes de demanda, precio de referencia y benchmark— ahora
+> están los planes con sus topes aplicados, la cobranza manual con vencimiento, gracia y
+> suspensión, los avisos de vencimiento por correo, la exportación de datos y la carga
+> masiva de stock por CSV. Lo que falta es operativo: configurar el SMTP, decidir el canal
+> de soporte y verificar los respaldos del hosting. El detalle está en
+> [docs/fase3-comercializacion.md](docs/fase3-comercializacion.md) y el procedimiento de
+> alta de clientes en [docs/operacion.md](docs/operacion.md).
 
 ## Requisitos previos
 
@@ -98,17 +99,25 @@ propósito — el esquema se versiona, los datos de prueba no.
 
 ### Usuarios de desarrollo
 
-Definí `Seed:Password` y el arranque en Development siembra dos automotoras, sus usuarios
-y el catálogo de marcas y modelos. Es idempotente: se puede correr en cada arranque. Sin
-esa clave el seed no corre — no hay contraseña por defecto, porque una contraseña por
-defecto que sobrevive a producción no la nota nadie hasta que es tarde.
+Definí `Seed:Password` y el arranque en Development siembra siete automotoras, sus
+usuarios, el catálogo de marcas y modelos, y el stock con noventa días de historia de
+demanda. Es idempotente: se puede correr en cada arranque. Sin esa clave el seed no corre
+— no hay contraseña por defecto, porque una contraseña por defecto que sobrevive a
+producción no la nota nadie hasta que es tarde.
+
+Cada automotora tiene un Owner y un Seller, con el slug en el mail:
 
 | Usuario | Rol | Entra a |
 | --- | --- | --- |
 | `owner@norte.uy` | Owner | Todo lo de Automotora Norte, incluida la gestión de vendedores |
 | `vendedor@norte.uy` | Seller | Vehículos y consultas de Automotora Norte |
-| `owner@sur.uy` / `vendedor@sur.uy` | Owner / Seller | Lo mismo, en Automotora Sur |
+| `owner@sur.uy`, `owner@costa.uy`, `owner@centenario.uy`, `owner@litoral.uy`, `owner@prado.uy`, `owner@estenia.uy` | Owner | Lo mismo, en las otras seis |
 | `super@automotoras.uy` | SuperAdmin | Cross-tenant, por `/api/admin/*` |
+
+**Son siete y no dos por el benchmark.** La comparación contra el mercado no publica nada
+por debajo de cinco automotoras además de la que pregunta, así que con dos o tres la
+pantalla dice —correctamente— que no hay muestra suficiente, y no hay forma de ver si el
+reporte funciona hasta tener clientes reales.
 
 ### Frontend
 
@@ -284,11 +293,28 @@ nada de ningún tenant.
 | --- | --- | --- |
 | `GET/POST/PUT /api/admin/tenants` | SuperAdmin | ABM de automotoras, con su Owner |
 | `POST /api/admin/tenants/{id}/verificar-dominio` | SuperAdmin | Comprueba que el dominio propio apunte acá y lo habilita |
+| `GET/POST/PUT /api/admin/planes` | SuperAdmin | Catálogo de planes: precio, topes y qué incluye |
+| `GET /api/admin/cobranza` | SuperAdmin | Todas las automotoras con plan, vencimiento y uso, las más urgentes primero |
+| `GET/POST /api/admin/tenants/{id}/suscripcion` | SuperAdmin | Ver el historial, asignar o cambiar de plan |
+| `POST /api/admin/tenants/{id}/pagos` | SuperAdmin | Registrar un cobro; empuja el vencimiento y reactiva al instante |
+| `POST /api/admin/tenants/{id}/baja` | SuperAdmin | Cerrar la suscripción. El sitio queda en mantenimiento; no se borra nada |
+| `POST /api/admin/tenants/{id}/importacion` | SuperAdmin | Carga inicial de stock por CSV |
 | `/api/admin/catalogo/*` | SuperAdmin | ABM de marcas, modelos y versiones |
 | `/api/admin/solicitudes-modelo` | SuperAdmin | Aprobar o rechazar altas de modelo |
 | `POST /api/jobs/cotizaciones` | Cron externo | Cotización del día, con `X-Job-Secret` |
 | `GET /api/jobs/modelos-a-cotizar` | Cron externo | Qué modelos y años están publicados, para no cotizar el catálogo entero |
 | `POST /api/jobs/precios-de-mercado` | Cron externo | Snapshot diario de precios de referencia |
+| `POST /api/jobs/avisos-de-vencimiento` | Cron externo, una vez por día | Avisa por correo a los dueños por vencer, en gracia o suspendidos. Cada etapa se avisa una vez |
+
+**Plan, datos y carga masiva** — panel de la automotora
+
+| Endpoint | Quién | Qué hace |
+| --- | --- | --- |
+| `POST /api/auth/password` | Cualquier usuario | Cambiar la contraseña propia. Con una contraseña provisoria es lo único que la API permite |
+| `GET /api/tenant/plan` | Owner | Plan, uso contra los topes y estado del pago |
+| `GET /api/tenant/exportacion` | Owner | ZIP con todos los datos de la automotora, también con el sitio suspendido |
+| `GET /api/vehiculos/importacion/plantilla` | Owner, Seller | Plantilla CSV de stock |
+| `POST /api/vehiculos/importacion?confirmar=` | Owner | Valida un CSV fila por fila; con `confirmar=true` carga todo o nada |
 
 **Reportes de demanda** — solo Owner
 
@@ -378,6 +404,36 @@ endpoint de tenant que lee datos de otros tenants, y está solo en
 [`BenchmarkController`](backend/Api/Controllers/BenchmarkController.cs) para que esa frontera
 se pueda auditar abriendo un archivo.
 
+## Datos de desarrollo
+
+El seed no es sólo "algo para que las pantallas no estén vacías": es lo que permite juzgar
+si los reportes dicen algo. Tres decisiones que lo explican.
+
+**Cada modelo tiene sus fotos.** El stock sembrado sale con fotos del vehículo que
+realmente es, de archivos de licencia libre de Wikimedia Commons referenciados en
+[`FotosDeCatalogo`](backend/Infrastructure/Persistence/FotosDeCatalogo.cs). No son
+placeholders: un catálogo donde la Hilux se ve como un hatchback —o como un paisaje— no
+deja evaluar ninguna de las pantallas que se apoyan en él, porque el ojo descarta la ficha
+entera antes de leer el precio. Se guardan las dos URL, la de la ficha y la de la grilla, y
+no se deriva una de la otra: Commons sólo sirve los anchos que tiene generados para cada
+archivo, y cuáles son cambia de imagen en imagen.
+
+**El stock no es uniforme.** Los precios salen del valor a nuevo de la carrocería,
+depreciado por año, y los kilómetros acompañan la edad; una camioneta no puede costar menos
+que un hatchback. Y cada unidad se comporta distinto: la mayoría anda bien, algunas están
+caras —mucha gente que mira y nadie que pregunte— y otras no las ve nadie. Si todas
+convirtieran igual, la columna de señal diría "saludable" en todas las filas y no habría
+manera de saber si clasifica.
+
+**La demanda insatisfecha se concentra.** Las búsquedas sin resultado se agrupan en unos
+pocos modelos por automotora, como pasa de verdad. Repartidas al azar entre sesenta modelos
+no se repite ninguna combinación, ninguna llega al mínimo de visitas distintas, y la
+pantalla de sugerencias queda vacía por un artefacto del seed y no porque el reporte esté
+mal.
+
+Todo sale de un `Random` con semilla fija: los mismos datos en cada corrida, así que un
+número raro en una pantalla se puede reproducir.
+
 ## Variables de entorno
 
 ### Backend
@@ -405,6 +461,8 @@ En variables de entorno, el anidamiento se expresa con doble guion bajo
 | `Storage:AccessKeyId` / `Storage:SecretAccessKey` | `Storage__AccessKeyId` / `Storage__SecretAccessKey` | Credenciales del object storage. Nunca versionar. |
 | `Jobs:Secret` | `Jobs__Secret` | Valor esperado en el header `X-Job-Secret` de `POST /api/jobs/{nombre}`. |
 | `Deploy:IpsPublicas` | `Deploy__IpsPublicas__0` | IP públicas de la aplicación. Es contra lo que se verifica un dominio propio; sin ellas, ningún dominio se puede verificar. |
+| `Cobranza:DiasDeAviso` / `Cobranza:DiasDeGracia` | `Cobranza__DiasDeAviso` / `Cobranza__DiasDeGracia` | Días de aviso antes del vencimiento (7) y de gracia después (10), con el sitio todavía publicado. |
+| `Correo:Host` / `Puerto` / `UsarSsl` / `Usuario` / `Password` / `Remitente` | `Correo__Host`, etc. | SMTP para los avisos de vencimiento. Sin `Host` y `Remitente` no sale ningún aviso. La contraseña nunca se versiona. |
 | `Analytics:IpHashSalt` | `Analytics__IpHashSalt` | Sal para hashear las IPs de los eventos. Si queda vacía se usa `Jwt:Secret`. |
 | `Seed:Password` | `Seed__Password` | Contraseña de los usuarios de desarrollo. Solo se usa en Development; sin valor, el seed no corre. |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0` | Orígenes del frontend habilitados. En desarrollo, `http://localhost:5173`. |

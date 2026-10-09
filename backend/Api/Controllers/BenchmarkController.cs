@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using AutomotoraSaaS.Api.Planes;
+using AutomotoraSaaS.Core.Planes;
+
 namespace AutomotoraSaaS.Api.Controllers;
 
 /// <summary>
@@ -36,6 +39,7 @@ namespace AutomotoraSaaS.Api.Controllers;
 [ApiController]
 [Route("api/reportes/benchmark")]
 [Authorize(Policy = Politicas.SoloOwner)]
+[RequiereDelPlan(FuncionDelPlan.Benchmark)]
 [ProducesResponseType(StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(StatusCodes.Status403Forbidden)]
 public sealed class BenchmarkController : ControllerBase

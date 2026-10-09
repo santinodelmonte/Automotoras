@@ -59,6 +59,7 @@ public class AppDbContext : DbContext
     public DbSet<VersionVehiculo> Versiones => Set<VersionVehiculo>();
     public DbSet<Cotizacion> Cotizaciones => Set<Cotizacion>();
     public DbSet<PrecioDeMercado> PreciosDeMercado => Set<PrecioDeMercado>();
+    public DbSet<Plan> Planes => Set<Plan>();
 
     // Identidad. Los usuarios llevan tenant anulable: el SuperAdmin es cross-tenant.
     public DbSet<User> Users => Set<User>();
@@ -70,6 +71,12 @@ public class AppDbContext : DbContext
     public DbSet<Evento> Eventos => Set<Evento>();
     public DbSet<Busqueda> Busquedas => Set<Busqueda>();
     public DbSet<SolicitudModelo> SolicitudesModelo => Set<SolicitudModelo>();
+
+    // Abono. Son del tenant —cada uno ve solo lo suyo— pero los administra el SuperAdmin
+    // por /api/admin/*, con el escape cross-tenant explícito.
+    public DbSet<Suscripcion> Suscripciones => Set<Suscripcion>();
+    public DbSet<Pago> Pagos => Set<Pago>();
+    public DbSet<AvisoDeCobro> AvisosDeCobro => Set<AvisoDeCobro>();
 
     /// <summary>
     /// Habilita escrituras cross-tenant mientras dure el <see cref="IDisposable"/>.
@@ -114,6 +121,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Evento>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Busqueda>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<SolicitudModelo>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Suscripcion>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Pago>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AvisoDeCobro>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
 
         // Las fotos no tienen tenant_id propio: pertenecen al tenant de su vehículo.
         modelBuilder.Entity<VehiculoFoto>()

@@ -5,6 +5,13 @@ import type {
   CambiarEstadoRequest,
   ConfiguracionDeTenant,
   CrearTenantRequest,
+  FilaDeCobranza,
+  GuardarPlanRequest,
+  Plan,
+  RegistrarPagoRequest,
+  ResultadoDeImportacion,
+  SituacionDelPlan,
+  SuscripcionDeTenant,
   CrearUsuarioRequest,
   BusquedaSinResultado,
   Dashboard,
@@ -88,6 +95,8 @@ interface RequestOptions {
   signal?: AbortSignal
   /** Los endpoints de sesión no se reintentan: son los que producen el token. */
   sinReintento?: boolean
+  /** Para descargas: devuelve el cuerpo como `Blob` en vez de parsear JSON. */
+  comoArchivo?: boolean
 }
 
 /** Arma un query string salteando los valores vacíos, que ensuciarían la URL. */
@@ -183,6 +192,10 @@ async function request<TResponse>(path: string, options: RequestOptions = {}): P
     return undefined as TResponse
   }
 
+  if (options.comoArchivo) {
+    return (await response.blob()) as TResponse
+  }
+
   return (await response.json()) as TResponse
 }
 
@@ -220,6 +233,23 @@ async function leerProblemDetails(response: Response): Promise<ProblemDetails | 
   }
 }
 
+function formularioDeArchivo(archivo: File): FormData {
+  const form = new FormData()
+  form.append('archivo', archivo, archivo.name)
+  return form
+}
+
+/** Dispara la descarga de un archivo que vino de la API. */
+export function guardarArchivo(contenido: Blob, nombre: string) {
+  const url = URL.createObjectURL(contenido)
+  const enlace = document.createElement('a')
+  enlace.href = url
+  enlace.download = nombre
+  enlace.click()
+  // Se libera después: revocarlo en el acto cancela la descarga en algunos navegadores.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /**
  * En desarrollo el tenant del sitio público viaja como prefijo de la ruta. En producción,
  * cuando cada automotora entra por su dominio, el prefijo sobra y el servidor resuelve el
@@ -243,6 +273,10 @@ export const api = {
       }),
 
     me: (signal?: AbortSignal) => request<Usuario>('/api/auth/me', { signal }),
+
+    /** Cambia la contraseña propia y devuelve una sesión nueva, ya sin la marca de provisoria. */
+    cambiarPassword: (actual: string, nueva: string) =>
+      request<Sesion>('/api/auth/password', { method: 'POST', body: { actual, nueva } }),
 
     logout: (refreshToken: string) =>
       request<void>('/api/auth/logout', {
@@ -299,6 +333,16 @@ export const api = {
 
     borrar: (id: number) => request<void>(`/api/vehiculos/${id}`, { method: 'DELETE' }),
 
+    plantillaDeImportacion: () =>
+      request<Blob>('/api/vehiculos/importacion/plantilla', { comoArchivo: true }),
+
+    /** Sin `confirmar`, solo valida. Con `confirmar`, carga todo o nada. */
+    importar: (archivo: File, confirmar: boolean) =>
+      request<ResultadoDeImportacion>(`/api/vehiculos/importacion${query({ confirmar })}`, {
+        method: 'POST',
+        form: formularioDeArchivo(archivo),
+      }),
+
     fotos: {
       subir: (vehiculoId: number, imagen: Blob, nombre: string) => {
         const form = new FormData()
@@ -336,6 +380,12 @@ export const api = {
 
       return request<ConfiguracionDeTenant>('/api/tenant/logo', { method: 'POST', form })
     },
+
+    /** El plan, el uso contra los topes y el estado del pago. Alimenta los avisos del panel. */
+    plan: (signal?: AbortSignal) => request<SituacionDelPlan>('/api/tenant/plan', { signal }),
+
+    /** ZIP con todos los datos de la automotora. */
+    exportar: () => request<Blob>('/api/tenant/exportacion', { comoArchivo: true }),
   },
 
   dashboard: (signal?: AbortSignal) => request<Dashboard>('/api/dashboard', { signal }),
@@ -378,6 +428,41 @@ export const api = {
 
     actualizarTenant: (id: number, cambios: ActualizarTenantRequest) =>
       request<TenantAdmin>(`/api/admin/tenants/${id}`, { method: 'PUT', body: cambios }),
+
+    planes: (signal?: AbortSignal) => request<Plan[]>('/api/admin/planes', { signal }),
+
+    crearPlan: (plan: GuardarPlanRequest) =>
+      request<Plan>('/api/admin/planes', { method: 'POST', body: plan }),
+
+    actualizarPlan: (id: number, plan: GuardarPlanRequest) =>
+      request<Plan>(`/api/admin/planes/${id}`, { method: 'PUT', body: plan }),
+
+    /** Todas las automotoras, las más urgentes primero. */
+    cobranza: (signal?: AbortSignal) => request<FilaDeCobranza[]>('/api/admin/cobranza', { signal }),
+
+    suscripcion: (tenantId: number, signal?: AbortSignal) =>
+      request<SuscripcionDeTenant>(`/api/admin/tenants/${tenantId}/suscripcion`, { signal }),
+
+    cambiarPlan: (tenantId: number, plan: string) =>
+      request<SuscripcionDeTenant>(`/api/admin/tenants/${tenantId}/suscripcion`, {
+        method: 'POST',
+        body: { plan },
+      }),
+
+    registrarPago: (tenantId: number, pago: RegistrarPagoRequest) =>
+      request<SuscripcionDeTenant>(`/api/admin/tenants/${tenantId}/pagos`, { method: 'POST', body: pago }),
+
+    darDeBaja: (tenantId: number, fecha: string, motivo: string) =>
+      request<SuscripcionDeTenant>(`/api/admin/tenants/${tenantId}/baja`, {
+        method: 'POST',
+        body: { fecha, motivo },
+      }),
+
+    importarStock: (tenantId: number, archivo: File, confirmar: boolean) =>
+      request<ResultadoDeImportacion>(`/api/admin/tenants/${tenantId}/importacion${query({ confirmar })}`, {
+        method: 'POST',
+        form: formularioDeArchivo(archivo),
+      }),
 
     marcas: (signal?: AbortSignal) => request<Marca[]>('/api/admin/catalogo/marcas', { signal }),
 

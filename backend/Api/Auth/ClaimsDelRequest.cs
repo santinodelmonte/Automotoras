@@ -38,6 +38,10 @@ public static class ClaimsDelRequest
     /// El precio de costo y el margen los ve el dueño, no el vendedor. Con esto se decide
     /// qué se proyecta al DTO: el dato no sale del servidor, no se esconde en la pantalla.
     /// </summary>
+    /// <summary>Si la sesión se abrió con una contraseña provisoria.</summary>
+    public static bool TienePasswordProvisoria(this ClaimsPrincipal principal)
+        => principal?.FindFirstValue(ClaimsDeLaApp.PasswordProvisoria) is not null;
+
     public static bool PuedeVerCostos(this ClaimsPrincipal principal)
     {
         var rol = principal.RolDelToken();

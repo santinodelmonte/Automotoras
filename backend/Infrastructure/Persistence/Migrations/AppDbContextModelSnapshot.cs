@@ -22,6 +22,54 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("AutomotoraSaaS.Core.Entities.AvisoDeCobro", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Destinatarios")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)")
+                        .HasColumnName("destinatarios");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("int")
+                        .HasColumnName("estado");
+
+                    b.Property<DateOnly>("PagaHasta")
+                        .HasColumnType("date")
+                        .HasColumnName("paga_hasta");
+
+                    b.Property<int>("SuscripcionId")
+                        .HasColumnType("int")
+                        .HasColumnName("suscripcion_id");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_avisos_de_cobro");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_avisos_de_cobro_tenant_id");
+
+                    b.HasIndex("SuscripcionId", "PagaHasta", "Estado")
+                        .IsUnique()
+                        .HasDatabaseName("ix_avisos_de_cobro_suscripcion_id_paga_hasta_estado");
+
+                    b.ToTable("avisos_de_cobro", (string)null);
+                });
+
             modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Busqueda", b =>
                 {
                     b.Property<long>("Id")
@@ -217,6 +265,196 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
                     b.ToTable("modelos", (string)null);
                 });
 
+            modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Pago", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Comprobante")
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)")
+                        .HasColumnName("comprobante");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha");
+
+                    b.Property<string>("Medio")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)")
+                        .HasColumnName("medio");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("int")
+                        .HasColumnName("moneda");
+
+                    b.Property<decimal>("Monto")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("monto");
+
+                    b.Property<string>("Nota")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("nota");
+
+                    b.Property<DateOnly>("PeriodoDesde")
+                        .HasColumnType("date")
+                        .HasColumnName("periodo_desde");
+
+                    b.Property<DateOnly>("PeriodoHasta")
+                        .HasColumnType("date")
+                        .HasColumnName("periodo_hasta");
+
+                    b.Property<int>("SuscripcionId")
+                        .HasColumnType("int")
+                        .HasColumnName("suscripcion_id");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pagos");
+
+                    b.HasIndex("SuscripcionId")
+                        .HasDatabaseName("ix_pagos_suscripcion_id");
+
+                    b.HasIndex("TenantId", "Fecha")
+                        .HasDatabaseName("ix_pagos_tenant_id_fecha");
+
+                    b.ToTable("pagos", (string)null);
+                });
+
+            modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Plan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)")
+                        .HasColumnName("codigo");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("HorasSoporteMes")
+                        .HasColumnType("int")
+                        .HasColumnName("horas_soporte_mes");
+
+                    b.Property<bool>("IncluyeBenchmark")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("incluye_benchmark");
+
+                    b.Property<bool>("IncluyeDominioPropio")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("incluye_dominio_propio");
+
+                    b.Property<bool>("IncluyeReportes")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("incluye_reportes");
+
+                    b.Property<int?>("MaxUsuarios")
+                        .HasColumnType("int")
+                        .HasColumnName("max_usuarios");
+
+                    b.Property<int?>("MaxVehiculos")
+                        .HasColumnType("int")
+                        .HasColumnName("max_vehiculos");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("int")
+                        .HasColumnName("moneda");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)")
+                        .HasColumnName("nombre");
+
+                    b.Property<decimal>("PrecioMensual")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("precio_mensual");
+
+                    b.HasKey("Id")
+                        .HasName("pk_planes");
+
+                    b.HasIndex("Codigo")
+                        .IsUnique()
+                        .HasDatabaseName("ix_planes_codigo");
+
+                    b.ToTable("planes", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Activo = true,
+                            Codigo = "vidriera",
+                            CreatedAt = new DateTime(2026, 10, 8, 0, 0, 0, 0, DateTimeKind.Utc),
+                            HorasSoporteMes = 0,
+                            IncluyeBenchmark = false,
+                            IncluyeDominioPropio = false,
+                            IncluyeReportes = false,
+                            MaxUsuarios = 2,
+                            MaxVehiculos = 40,
+                            Moneda = 2,
+                            Nombre = "Vidriera",
+                            PrecioMensual = 4000m
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Activo = true,
+                            Codigo = "demanda",
+                            CreatedAt = new DateTime(2026, 10, 8, 0, 0, 0, 0, DateTimeKind.Utc),
+                            HorasSoporteMes = 2,
+                            IncluyeBenchmark = false,
+                            IncluyeDominioPropio = true,
+                            IncluyeReportes = true,
+                            MaxUsuarios = 6,
+                            MaxVehiculos = 120,
+                            Moneda = 2,
+                            Nombre = "Demanda",
+                            PrecioMensual = 6900m
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Activo = true,
+                            Codigo = "full",
+                            CreatedAt = new DateTime(2026, 10, 8, 0, 0, 0, 0, DateTimeKind.Utc),
+                            HorasSoporteMes = 5,
+                            IncluyeBenchmark = true,
+                            IncluyeDominioPropio = true,
+                            IncluyeReportes = true,
+                            Moneda = 2,
+                            Nombre = "Full",
+                            PrecioMensual = 9900m
+                        });
+                });
+
             modelBuilder.Entity("AutomotoraSaaS.Core.Entities.PrecioDeMercado", b =>
                 {
                     b.Property<int>("Id")
@@ -398,6 +636,66 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
                     b.ToTable("solicitudes_modelo", (string)null);
                 });
 
+            modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Suscripcion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly?>("Fin")
+                        .HasColumnType("date")
+                        .HasColumnName("fin");
+
+                    b.Property<DateOnly>("Inicio")
+                        .HasColumnType("date")
+                        .HasColumnName("inicio");
+
+                    b.Property<string>("MotivoDeBaja")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("motivo_de_baja");
+
+                    b.Property<DateOnly>("PagaHasta")
+                        .HasColumnType("date")
+                        .HasColumnName("paga_hasta");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_id");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int?>("TenantIdVigente")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("int")
+                        .HasColumnName("tenant_id_vigente")
+                        .HasComputedColumnSql("CASE WHEN fin IS NULL THEN tenant_id END", true);
+
+                    b.HasKey("Id")
+                        .HasName("pk_suscripciones");
+
+                    b.HasIndex("PlanId")
+                        .HasDatabaseName("ix_suscripciones_plan_id");
+
+                    b.HasIndex("TenantIdVigente")
+                        .IsUnique()
+                        .HasDatabaseName("ix_suscripciones_tenant_id_vigente");
+
+                    b.HasIndex("TenantId", "Inicio")
+                        .HasDatabaseName("ix_suscripciones_tenant_id_inicio");
+
+                    b.ToTable("suscripciones", (string)null);
+                });
+
             modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Tenant", b =>
                 {
                     b.Property<int>("Id")
@@ -496,6 +794,10 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
+
+                    b.Property<bool>("DebeCambiarPassword")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("debe_cambiar_password");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -724,6 +1026,27 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
                     b.ToTable("versiones", (string)null);
                 });
 
+            modelBuilder.Entity("AutomotoraSaaS.Core.Entities.AvisoDeCobro", b =>
+                {
+                    b.HasOne("AutomotoraSaaS.Core.Entities.Suscripcion", "Suscripcion")
+                        .WithMany()
+                        .HasForeignKey("SuscripcionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_avisos_de_cobro_suscripciones_suscripcion_id");
+
+                    b.HasOne("AutomotoraSaaS.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_avisos_de_cobro_tenants_tenant_id");
+
+                    b.Navigation("Suscripcion");
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Busqueda", b =>
                 {
                     b.HasOne("AutomotoraSaaS.Core.Entities.Tenant", "Tenant")
@@ -766,6 +1089,27 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_modelos_marcas_marca_id");
 
                     b.Navigation("Marca");
+                });
+
+            modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Pago", b =>
+                {
+                    b.HasOne("AutomotoraSaaS.Core.Entities.Suscripcion", "Suscripcion")
+                        .WithMany("Pagos")
+                        .HasForeignKey("SuscripcionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_pagos_suscripciones_suscripcion_id");
+
+                    b.HasOne("AutomotoraSaaS.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_pagos_tenants_tenant_id");
+
+                    b.Navigation("Suscripcion");
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("AutomotoraSaaS.Core.Entities.PrecioDeMercado", b =>
@@ -826,6 +1170,27 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
                     b.Navigation("ModeloCreado");
 
                     b.Navigation("SolicitadaPor");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Suscripcion", b =>
+                {
+                    b.HasOne("AutomotoraSaaS.Core.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_suscripciones_planes_plan_id");
+
+                    b.HasOne("AutomotoraSaaS.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_suscripciones_tenants_tenant_id");
+
+                    b.Navigation("Plan");
 
                     b.Navigation("Tenant");
                 });
@@ -902,6 +1267,11 @@ namespace AutomotoraSaaS.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Modelo", b =>
                 {
                     b.Navigation("Versiones");
+                });
+
+            modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Suscripcion", b =>
+                {
+                    b.Navigation("Pagos");
                 });
 
             modelBuilder.Entity("AutomotoraSaaS.Core.Entities.Tenant", b =>

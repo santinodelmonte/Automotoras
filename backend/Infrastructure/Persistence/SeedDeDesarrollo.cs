@@ -1,13 +1,14 @@
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Planes;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutomotoraSaaS.Infrastructure.Persistence;
 
 /// <summary>
-/// Datos mínimos para poder trabajar en desarrollo: dos automotoras con sus usuarios y el
-/// catálogo de marcas y modelos del mercado uruguayo.
+/// Datos mínimos para poder trabajar en desarrollo: siete automotoras con sus usuarios y
+/// el catálogo de marcas y modelos del mercado uruguayo.
 /// </summary>
 /// <remarks>
 /// Idempotente: se puede correr en cada arranque. Solo se ejecuta en Development y solo
@@ -44,7 +45,7 @@ public static class SeedDeDesarrollo
         // IgnoreQueryFilters en todas las consultas del seed: sin tenant resuelto los
         // filtros globales devuelven cero filas, y un chequeo de idempotencia que siempre
         // ve la base vacía vuelve a insertar y choca contra los índices únicos.
-        await SembrarTenantsAsync(db, hash, cancellationToken).ConfigureAwait(false);
+        await SembrarTenantsAsync(db, hash, reloj, cancellationToken).ConfigureAwait(false);
         await SembrarCatalogoAsync(db, cancellationToken).ConfigureAwait(false);
 
         // El stock y su historia de demanda van al final: necesitan las automotoras y el
@@ -52,9 +53,13 @@ public static class SeedDeDesarrollo
         await SeedDeVehiculos.EjecutarAsync(db, reloj, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task SembrarTenantsAsync(AppDbContext db, string hash, CancellationToken cancellationToken)
+    private static async Task SembrarTenantsAsync(
+        AppDbContext db,
+        string hash,
+        TimeProvider reloj,
+        CancellationToken cancellationToken)
     {
-        foreach (var (slug, nombre, dominio, primario, whatsapp) in Automotoras)
+        foreach (var (slug, nombre, dominio, primario, whatsapp, direccion) in Automotoras)
         {
             var tenant = await db.Tenants
                 .IgnoreQueryFilters()
@@ -72,18 +77,49 @@ public static class SeedDeDesarrollo
                     ColorSecundario = "#0f172a",
                     Whatsapp = whatsapp,
                     Telefono = whatsapp,
-                    Direccion = "Av. Italia 1234, Montevideo",
+                    Direccion = direccion,
                 };
 
                 db.Tenants.Add(tenant);
                 await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
 
+            await AsegurarSuscripcionAsync(db, tenant.Id, reloj, cancellationToken).ConfigureAwait(false);
             await AsegurarUsuarioAsync(db, $"owner@{slug}.uy", $"Owner {nombre}", RolUsuario.Owner, tenant.Id, hash, cancellationToken).ConfigureAwait(false);
             await AsegurarUsuarioAsync(db, $"vendedor@{slug}.uy", $"Vendedor {nombre}", RolUsuario.Seller, tenant.Id, hash, cancellationToken).ConfigureAwait(false);
         }
 
         await AsegurarUsuarioAsync(db, "super@automotoras.uy", "Super Admin", RolUsuario.SuperAdmin, null, hash, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Plan Full para todas: en desarrollo hace falta ver todas las pantallas, y con un
+    /// plan más chico los reportes y el benchmark quedarían cerrados por plan.
+    /// </summary>
+    private static async Task AsegurarSuscripcionAsync(
+        AppDbContext db,
+        int tenantId,
+        TimeProvider reloj,
+        CancellationToken cancellationToken)
+    {
+        var tiene = await db.Suscripciones
+            .IgnoreQueryFilters()
+            .AnyAsync(s => s.TenantId == tenantId && s.Fin == null, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (tiene)
+        {
+            return;
+        }
+
+        var full = await db.Planes
+            .SingleAsync(p => p.Codigo == CodigosDePlan.Full, cancellationToken)
+            .ConfigureAwait(false);
+
+        var hoy = DateOnly.FromDateTime(reloj.GetUtcNow().UtcDateTime);
+        db.Suscripciones.Add(Suscripciones.IniciarConBonificacion(tenantId, full, hoy));
+
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task AsegurarUsuarioAsync(
@@ -138,11 +174,30 @@ public static class SeedDeDesarrollo
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static readonly (string Slug, string Nombre, string Dominio, string ColorPrimario, string Whatsapp)[] Automotoras =
+    /// <summary>
+    /// Las automotoras de desarrollo.
+    /// </summary>
+    /// <remarks>
+    /// Son siete y no dos por el benchmark: la comparación contra el mercado no publica
+    /// nada si no hay al menos cinco automotoras además de la que pregunta
+    /// (<see cref="Core.Reportes.ReglasDelBenchmark"/>). Con dos o tres, la pantalla dice
+    /// —correctamente— que no hay muestra suficiente, y entonces la única forma de saber
+    /// si el reporte funciona es esperar a tener clientes reales.
+    /// <para>
+    /// Cada una tiene su ciudad y su color: un seed donde todas comparten la dirección
+    /// hace que el branding por tenant, que es la mitad del producto, se vea igual en las
+    /// siete.
+    /// </para>
+    /// </remarks>
+    private static readonly (string Slug, string Nombre, string Dominio, string ColorPrimario, string Whatsapp, string Direccion)[] Automotoras =
     [
-        ("norte", "Automotora Norte", "automotoranorte.uy", "#059669", "+59899111222"),
-        ("sur", "Automotora Sur", "automotorasur.uy", "#2563eb", "+59899333444"),
-        ("costa", "Autos de la Costa", "autosdelacosta.uy", "#ea580c", "+59899555666"),
+        ("norte", "Automotora Norte", "automotoranorte.uy", "#059669", "+59899111222", "Av. Italia 3821, Montevideo"),
+        ("sur", "Automotora Sur", "automotorasur.uy", "#2563eb", "+59899333444", "Av. Luis A. de Herrera 1248, Montevideo"),
+        ("costa", "Autos de la Costa", "autosdelacosta.uy", "#ea580c", "+59899555666", "Av. Roosevelt 1520, Punta del Este"),
+        ("centenario", "Automotora Centenario", "centenarioautos.uy", "#7c3aed", "+59899777888", "Bvar. Artigas 2455, Montevideo"),
+        ("litoral", "Litoral Automotores", "litoralautomotores.uy", "#dc2626", "+59899101112", "Av. Uruguay 890, Paysandú"),
+        ("prado", "Prado Motors", "pradomotors.uy", "#0891b2", "+59899131415", "Av. Agraciada 3710, Montevideo"),
+        ("estenia", "Estenia Autos", "esteniaautos.uy", "#ca8a04", "+59899161718", "Ruta 8 km 24, Canelones"),
     ];
 
     /// <summary>

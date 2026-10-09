@@ -12,6 +12,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using AutomotoraSaaS.Api.Planes;
+using AutomotoraSaaS.Core.Planes;
+
 namespace AutomotoraSaaS.Api.Controllers;
 
 /// <summary>
@@ -33,6 +36,7 @@ namespace AutomotoraSaaS.Api.Controllers;
 [ApiController]
 [Route("api/reportes")]
 [Authorize(Policy = Politicas.SoloOwner)]
+[RequiereDelPlan(FuncionDelPlan.Reportes)]
 [ProducesResponseType(StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(StatusCodes.Status403Forbidden)]
 public sealed class ReportesController : ControllerBase
@@ -575,7 +579,7 @@ public sealed class ReportesController : ControllerBase
             vehiculo.Estado.ToString(),
             vehiculo.Precio,
             vehiculo.Moneda.ToString(),
-            MapeosDeVehiculo.Portada(vehiculo)?.Url,
+            MapeosDeVehiculo.PortadaParaGrilla(vehiculo),
             enGondola,
             vistasDelVehiculo,
             consultasDelVehiculo,

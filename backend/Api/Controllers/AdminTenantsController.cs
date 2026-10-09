@@ -1,7 +1,9 @@
+using AutomotoraSaaS.Api.Planes;
 using AutomotoraSaaS.Core.Admin;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Planes;
 using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -32,19 +34,22 @@ public sealed class AdminTenantsController : ControllerBase
     private readonly IResolvedorDeDns _dns;
     private readonly IConfiguration _configuracion;
     private readonly TimeProvider _reloj;
+    private readonly IPoliticaDePlan _politica;
 
     public AdminTenantsController(
         AppDbContext db,
         IPasswordHasher hasher,
         IResolvedorDeDns dns,
         IConfiguration configuracion,
-        TimeProvider reloj)
+        TimeProvider reloj,
+        IPoliticaDePlan politica)
     {
         _db = db;
         _hasher = hasher;
         _dns = dns;
         _configuracion = configuracion;
         _reloj = reloj;
+        _politica = politica;
     }
 
     [HttpGet]
@@ -126,21 +131,50 @@ public sealed class AdminTenantsController : ControllerBase
             return Conflicto("Ya hay un usuario registrado con ese email.");
         }
 
+        var codigoDePlan = request.Plan?.Trim().ToLowerInvariant() ?? CodigosDePlan.PorDefecto;
+
+        var plan = await _db.Planes
+            .FirstOrDefaultAsync(p => p.Codigo == codigoDePlan && p.Activo, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (plan is null)
+        {
+            return Conflicto($"No hay ningún plan disponible con el código '{codigoDePlan}'.");
+        }
+
+        if (dominio is not null && !plan.IncluyeDominioPropio)
+        {
+            return this.Rechazo(new RechazoDelPlan(
+                "dominio-propio",
+                $"El dominio propio no está incluido en el plan {plan.Nombre}. Elegí un plan que lo incluya o creá la automotora sin dominio.",
+                plan.Nombre,
+                Tope: null,
+                Uso: null));
+        }
+
         var tenant = new Tenant
         {
             Slug = slug,
             Nombre = request.Nombre.Trim(),
             DominioCustom = dominio,
+            ColorPrimario = Opcional(request.ColorPrimario)?.ToLowerInvariant(),
+            ColorSecundario = Opcional(request.ColorSecundario)?.ToLowerInvariant(),
+            Whatsapp = Opcional(request.Whatsapp),
+            Telefono = Opcional(request.Telefono),
+            Direccion = Opcional(request.Direccion),
         };
 
         _db.Tenants.Add(tenant);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        // El escape cross-tenant, explícito y acotado a esta escritura: el Owner que se
-        // está creando pertenece a una automotora que no es la del request, porque el
-        // SuperAdmin no tiene ninguna.
+        // El escape cross-tenant, explícito y acotado a esta escritura: el Owner y la
+        // suscripción que se están creando pertenecen a una automotora que no es la del
+        // request, porque el SuperAdmin no tiene ninguna.
         using (var _ = _db.PermitirEscrituraCrossTenant())
         {
+            var hoy = DateOnly.FromDateTime(_reloj.GetUtcNow().UtcDateTime);
+            _db.Suscripciones.Add(Suscripciones.IniciarConBonificacion(tenant.Id, plan, hoy));
+
             _db.Users.Add(new User
             {
                 TenantId = tenant.Id,
@@ -148,6 +182,9 @@ public sealed class AdminTenantsController : ControllerBase
                 Nombre = request.NombreDelOwner.Trim(),
                 Rol = RolUsuario.Owner,
                 PasswordHash = _hasher.Hash(request.PasswordDelOwner),
+
+                // La puso el SuperAdmin: el dueño la cambia en su primer ingreso.
+                DebeCambiarPassword = true,
             });
 
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -189,6 +226,18 @@ public sealed class AdminTenantsController : ControllerBase
                 .ConfigureAwait(false))
         {
             return Conflicto("Ya hay otra automotora con ese dominio.");
+        }
+
+        // Cargar un dominio nuevo requiere que el plan lo incluya. Uno que ya estaba se
+        // respeta aunque el plan haya bajado: bajar de plan no rompe nada de lo que hay.
+        if (dominio is not null && !string.Equals(tenant.DominioCustom, dominio, StringComparison.Ordinal))
+        {
+            var situacion = await _politica.SituacionAsync(id, cancellationToken).ConfigureAwait(false);
+
+            if (situacion.Usar(FuncionDelPlan.DominioPropio) is { } rechazo)
+            {
+                return this.Rechazo(rechazo);
+            }
         }
 
         // Cambiar el dominio invalida la verificación anterior, que era sobre otro dominio.
@@ -320,6 +369,9 @@ public sealed class AdminTenantsController : ControllerBase
             usuarios,
             vehiculos,
             tenant.DominioVerificadoEn);
+
+    private static string? Opcional(string? valor)
+        => string.IsNullOrWhiteSpace(valor) ? null : valor.Trim();
 
     private static string? Dominio(string? valor)
         => string.IsNullOrWhiteSpace(valor) ? null : valor.Trim().ToLowerInvariant();

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using AutomotoraSaaS.Core.Auth;
 using AutomotoraSaaS.Core.Entities;
 using AutomotoraSaaS.Core.Enums;
+using AutomotoraSaaS.Core.Planes;
 using AutomotoraSaaS.Core.Storage;
 using AutomotoraSaaS.Core.Tenants;
 using AutomotoraSaaS.Infrastructure.Persistence;
@@ -132,6 +133,9 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
     /// <summary>DNS de mentira: los tests declaran a dónde apunta cada dominio.</summary>
     public DnsDePrueba Dns { get; } = new();
 
+    /// <summary>Correo en memoria: los avisos quedan acá y no salen a ningún lado.</summary>
+    public CorreoDePrueba Correo { get; } = new();
+
     /// <summary>La IP que la configuración de los tests declara como propia.</summary>
     public const string IpDeLaAplicacion = "190.64.10.20";
 
@@ -196,6 +200,43 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
         db.SaveChanges();
     }
 
+    /// <summary>
+    /// Una automotora nueva con su Owner, en el plan pedido y con el pago cubierto hasta
+    /// <paramref name="pagaHasta"/> (por defecto, dentro de un mes).
+    /// </summary>
+    /// <returns>El id de la automotora y el email de su Owner, que entra con <see cref="Password"/>.</returns>
+    public (int TenantId, string EmailOwner) AutomotoraConPlan(string slug, string codigoDePlan, DateOnly? pagaHasta = null)
+    {
+        var email = $"owner@{slug}.uy";
+        var tenantId = 0;
+
+        ConLaBase(db =>
+        {
+            var tenant = new Tenant { Slug = slug, Nombre = $"Automotora {slug}" };
+            db.Tenants.Add(tenant);
+            db.SaveChanges();
+
+            var plan = db.Planes.Single(p => p.Codigo == codigoDePlan);
+            var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+
+            db.Suscripciones.Add(new Suscripcion
+            {
+                TenantId = tenant.Id,
+                PlanId = plan.Id,
+                Inicio = hoy.AddMonths(-3),
+                PagaHasta = pagaHasta ?? hoy.AddMonths(1),
+            });
+
+            using var scope = Services.CreateScope();
+            var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+            db.Users.Add(NuevoUsuario(email, $"Owner {slug}", RolUsuario.Owner, tenant.Id, hasher.Hash(Password)));
+
+            tenantId = tenant.Id;
+        });
+
+        return (tenantId, email);
+    }
+
     /// <summary>Un evento ya ocurrido, con su fecha.</summary>
     public static Evento Evento(int tenantId, int? vehiculoId, TipoEvento tipo, DateTime cuando, string? sesion = null)
         => new()
@@ -230,6 +271,9 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
             servicios.RemoveAll<IResolvedorDeDns>();
             servicios.AddSingleton<IResolvedorDeDns>(Dns);
+
+            servicios.RemoveAll<INotificadorPorCorreo>();
+            servicios.AddSingleton<INotificadorPorCorreo>(Correo);
         });
     }
 
@@ -278,6 +322,18 @@ public sealed class FabricaDeApi : WebApplicationFactory<Program>
 
         TenantNorte = norte.Id;
         TenantSur = sur.Id;
+
+        // Plan Full y al día: los tests de siempre prueban el producto, no la cobranza. Los
+        // de planes y vencimientos arman sus propias automotoras con AutomotoraConPlan.
+        var full = db.Planes.Single(p => p.Codigo == CodigosDePlan.Full);
+        var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        foreach (var tenant in new[] { norte, sur, apagada })
+        {
+            db.Suscripciones.Add(Suscripciones.IniciarConBonificacion(tenant.Id, full, hoy));
+        }
+
+        db.SaveChanges();
 
         var hash = hasher.Hash(Password);
 

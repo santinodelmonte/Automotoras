@@ -1,4 +1,5 @@
 using AutomotoraSaaS.Api.Auth;
+using AutomotoraSaaS.Api.Filters;
 using AutomotoraSaaS.Core.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +22,7 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [PermitidoConPasswordProvisoria]
     [ProducesResponseType(typeof(SesionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<SesionDto>> Login(LoginRequest request, CancellationToken cancellationToken)
@@ -32,6 +34,7 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [PermitidoConPasswordProvisoria]
     [ProducesResponseType(typeof(SesionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<SesionDto>> Refresh(RefreshRequest request, CancellationToken cancellationToken)
@@ -50,6 +53,7 @@ public sealed class AuthController : ControllerBase
     /// </summary>
     [HttpPost("logout")]
     [AllowAnonymous]
+    [PermitidoConPasswordProvisoria]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Logout(RefreshRequest request, CancellationToken cancellationToken)
     {
@@ -71,6 +75,7 @@ public sealed class AuthController : ControllerBase
     /// </remarks>
     [HttpGet("me")]
     [Authorize]
+    [PermitidoConPasswordProvisoria]
     [ProducesResponseType(typeof(UsuarioDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public ActionResult<UsuarioDto> Me()
@@ -86,7 +91,46 @@ public sealed class AuthController : ControllerBase
             User.EmailDelToken() ?? string.Empty,
             User.NombreDelToken() ?? string.Empty,
             rol,
-            Activo: true));
+            Activo: true,
+            DebeCambiarPassword: User.TienePasswordProvisoria()));
+    }
+
+    /// <summary>
+    /// Cambio de la contraseña propia. Es lo único que se puede hacer con una contraseña
+    /// provisoria, y devuelve una sesión nueva sin esa marca.
+    /// </summary>
+    [HttpPost("password")]
+    [Authorize]
+    [PermitidoConPasswordProvisoria]
+    [ProducesResponseType(typeof(SesionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<SesionDto>> CambiarPassword(
+        CambiarPasswordPropiaRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (User.IdDeUsuario() is not { } id)
+        {
+            return Unauthorized();
+        }
+
+        var resultado = await _auth.CambiarPasswordPropiaAsync(id, request, cancellationToken).ConfigureAwait(false);
+
+        if (resultado.Sesion is { } sesion)
+        {
+            return Ok(sesion);
+        }
+
+        return resultado.Error switch
+        {
+            ErrorDeAutenticacion.PasswordRepetida => Problem(
+                detail: "La contraseña nueva tiene que ser distinta de la actual.",
+                statusCode: StatusCodes.Status400BadRequest),
+            ErrorDeAutenticacion.CredencialesInvalidas => Problem(
+                detail: "La contraseña actual no es correcta.",
+                statusCode: StatusCodes.Status400BadRequest),
+            _ => Rechazo(resultado.Error).Result!,
+        };
     }
 
     /// <summary>

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '@shared/api/client'
 import { Esqueleto, Estado } from '@shared/ui/Estado'
 import { entero, fecha } from '@shared/ui/formato'
-import type { TenantAdmin, VerificacionDeDominio } from '@shared/api/types'
+import { precio } from '@shared/ui/formato'
+import type { Plan, TenantAdmin, VerificacionDeDominio } from '@shared/api/types'
 
 export function AutomotorasPage() {
   const [tenants, setTenants] = useState<TenantAdmin[] | null>(null)
@@ -12,6 +13,7 @@ export function AutomotorasPage() {
   const [creando, setCreando] = useState(false)
   const [verificaciones, setVerificaciones] = useState<Record<number, VerificacionDeDominio>>({})
   const [verificando, setVerificando] = useState<number | null>(null)
+  const [planes, setPlanes] = useState<Plan[]>([])
 
   const [formulario, setFormulario] = useState({
     slug: '',
@@ -20,11 +22,18 @@ export function AutomotorasPage() {
     emailDelOwner: '',
     nombreDelOwner: '',
     passwordDelOwner: '',
+    plan: 'demanda',
+    colorPrimario: '#059669',
+    whatsapp: '',
+    telefono: '',
+    direccion: '',
   })
 
   const cargar = useCallback(async (signal?: AbortSignal) => {
     try {
-      setTenants(await api.admin.tenants(signal))
+      const [lista, catalogo] = await Promise.all([api.admin.tenants(signal), api.admin.planes(signal)])
+      setTenants(lista)
+      setPlanes(catalogo.filter((p) => p.activo))
     } catch (problema) {
       if (signal?.aborted) return
       setError(problema instanceof Error ? problema.message : 'No se pudo cargar la lista.')
@@ -48,6 +57,9 @@ export function AutomotorasPage() {
       await api.admin.crearTenant({
         ...formulario,
         dominioCustom: formulario.dominioCustom || null,
+        whatsapp: formulario.whatsapp || null,
+        telefono: formulario.telefono || null,
+        direccion: formulario.direccion || null,
       })
 
       setFormulario({
@@ -57,8 +69,13 @@ export function AutomotorasPage() {
         emailDelOwner: '',
         nombreDelOwner: '',
         passwordDelOwner: '',
+        plan: formulario.plan,
+        colorPrimario: '#059669',
+        whatsapp: '',
+        telefono: '',
+        direccion: '',
       })
-      setMensaje('Automotora creada. Su dueño ya puede entrar.')
+      setMensaje('Automotora creada con los dos meses bonificados. Su dueño entra con la contraseña provisoria y la cambia en el primer ingreso; el logo lo sube desde Configuración y el pago se sigue en Cobranza.')
       await cargar()
     } catch (problema) {
       if (problema instanceof ApiError) {
@@ -192,6 +209,21 @@ export function AutomotorasPage() {
             />
           </Campo>
 
+          <Campo etiqueta="Plan" errores={errores.Plan}>
+            <select
+              value={formulario.plan}
+              onChange={(e) => setFormulario({ ...formulario, plan: e.target.value })}
+              className={entradaClase}
+            >
+              {planes.map((p) => (
+                <option key={p.id} value={p.codigo}>
+                  {p.nombre} — {precio(p.precioMensual, p.moneda)} por mes
+                  {p.incluyeDominioPropio ? '' : ' (sin dominio propio)'}
+                </option>
+              ))}
+            </select>
+          </Campo>
+
           <Campo etiqueta="Dominio propio (opcional)" errores={errores.DominioCustom}>
             <input
               placeholder="automotoranorte.uy"
@@ -220,7 +252,41 @@ export function AutomotorasPage() {
             />
           </Campo>
 
-          <Campo etiqueta="Contraseña del dueño" errores={errores.PasswordDelOwner}>
+          <Campo etiqueta="Color principal" errores={errores.ColorPrimario}>
+            <input
+              type="color"
+              value={formulario.colorPrimario}
+              onChange={(e) => setFormulario({ ...formulario, colorPrimario: e.target.value })}
+              className="h-10 w-20 rounded-lg border border-slate-300"
+            />
+          </Campo>
+
+          <Campo etiqueta="WhatsApp (opcional)" errores={errores.Whatsapp}>
+            <input
+              placeholder="+59899123456"
+              value={formulario.whatsapp}
+              onChange={(e) => setFormulario({ ...formulario, whatsapp: e.target.value })}
+              className={entradaClase}
+            />
+          </Campo>
+
+          <Campo etiqueta="Teléfono (opcional)" errores={errores.Telefono}>
+            <input
+              value={formulario.telefono}
+              onChange={(e) => setFormulario({ ...formulario, telefono: e.target.value })}
+              className={entradaClase}
+            />
+          </Campo>
+
+          <Campo etiqueta="Dirección (opcional)" errores={errores.Direccion}>
+            <input
+              value={formulario.direccion}
+              onChange={(e) => setFormulario({ ...formulario, direccion: e.target.value })}
+              className={entradaClase}
+            />
+          </Campo>
+
+          <Campo etiqueta="Contraseña provisoria del dueño" errores={errores.PasswordDelOwner}>
             <input
               type="password"
               required

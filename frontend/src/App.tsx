@@ -4,6 +4,8 @@ import { InicioDelPanel } from '@admin/InicioDelPanel'
 import { LoginPage } from '@admin/LoginPage'
 import { AutomotorasPage } from '@admin/paginas/AutomotorasPage'
 import { CatalogoPage } from '@admin/paginas/CatalogoPage'
+import { CobranzaPage } from '@admin/paginas/CobranzaPage'
+import { PlanPage } from '@admin/paginas/PlanPage'
 import { ConfiguracionPage } from '@admin/paginas/ConfiguracionPage'
 import { ReportesPage } from '@admin/paginas/ReportesPage'
 import { SolicitudesPage } from '@admin/paginas/SolicitudesPage'
@@ -69,12 +71,28 @@ function App() {
               </RutaProtegida>
             }
           />
+          <Route
+            path="plan"
+            element={
+              <RutaProtegida roles={['Owner']}>
+                <PlanPage />
+              </RutaProtegida>
+            }
+          />
 
           <Route
             path="automotoras"
             element={
               <RutaProtegida roles={['SuperAdmin']}>
                 <AutomotorasPage />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="cobranza"
+            element={
+              <RutaProtegida roles={['SuperAdmin']}>
+                <CobranzaPage />
               </RutaProtegida>
             }
           />

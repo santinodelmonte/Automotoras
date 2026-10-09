@@ -107,7 +107,11 @@ builder.Services.AddProblemDetails();
 
 builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
 
-builder.Services.AddControllers(options => options.Filters.Add<ValidacionFluentFilter>());
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<ValidacionFluentFilter>();
+    options.Filters.Add<PasswordProvisoriaFilter>();
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {

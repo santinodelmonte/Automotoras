@@ -11,6 +11,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using AutomotoraSaaS.Api.Planes;
+using AutomotoraSaaS.Core.Planes;
+
 namespace AutomotoraSaaS.Api.Controllers;
 
 /// <summary>
@@ -33,15 +36,31 @@ public sealed class VehiculosController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IImageStorage _storage;
     private readonly TimeProvider _reloj;
+    private readonly IPoliticaDePlan _plan;
 
-    public VehiculosController(AppDbContext db, IImageStorage storage, TimeProvider reloj)
+    public VehiculosController(AppDbContext db, IImageStorage storage, TimeProvider reloj, IPoliticaDePlan plan)
     {
         _db = db;
         _storage = storage;
         _reloj = reloj;
+        _plan = plan;
     }
 
     private DateTime Ahora => _reloj.GetUtcNow().UtcDateTime;
+
+    /// <summary>Lo que cuenta para el tope del plan: lo que se ve en la vidriera.</summary>
+    private static bool EstaPublicado(EstadoVehiculo estado)
+        => estado is EstadoVehiculo.Disponible or EstadoVehiculo.Reservado;
+
+    private async Task<ActionResult?> RechazoPorTopeAsync(CancellationToken cancellationToken)
+    {
+        var tenantId = User.TenantIdDelToken()
+                       ?? throw new InvalidOperationException("El panel de vehículos requiere un tenant en el token.");
+
+        var situacion = await _plan.SituacionAsync(tenantId, cancellationToken).ConfigureAwait(false);
+
+        return situacion.PublicarOtroVehiculo() is { } rechazo ? this.Rechazo(rechazo) : null;
+    }
 
     [HttpGet]
     [ProducesResponseType(typeof(PaginaDe<VehiculoResumenDto>), StatusCodes.Status200OK)]
@@ -97,6 +116,12 @@ public sealed class VehiculosController : ControllerBase
         if (await VerificarCatalogoAsync(request, cancellationToken).ConfigureAwait(false) is { } error)
         {
             return error;
+        }
+
+        // Un alta nace publicada, así que ocupa un lugar del tope del plan.
+        if (await RechazoPorTopeAsync(cancellationToken).ConfigureAwait(false) is { } rechazo)
+        {
+            return rechazo;
         }
 
         var vehiculo = new Vehiculo
@@ -174,6 +199,16 @@ public sealed class VehiculosController : ControllerBase
         }
 
         var estado = Enumeraciones.Parsear<EstadoVehiculo>(request.Estado);
+
+        // Volver a publicar una unidad pausada o vendida ocupa un lugar del tope. Pasar de
+        // disponible a reservado, o al revés, no: la unidad ya estaba en la vidriera.
+        if (EstaPublicado(estado)
+            && !EstaPublicado(vehiculo.Estado)
+            && await RechazoPorTopeAsync(cancellationToken).ConfigureAwait(false) is { } rechazo)
+        {
+            return rechazo;
+        }
+
         vehiculo.Estado = estado;
 
         if (estado == EstadoVehiculo.Vendido)
